@@ -15,7 +15,7 @@ export default function Home() {
           />{" "}
           <span className="text-lg font-bold">Module SDK Demos</span>
         </div>
-        <ul className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
+        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
           <li className="mb-2">
             <a href="/smart-sessions" className="underline">
               Smart Sessions
@@ -31,7 +31,7 @@ export default function Home() {
               Webauthn
             </a>
           </li>
-        </ul>
+        </ol>
       </main>
       <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
         <div>

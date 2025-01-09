@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Providers } from "./providers";
+import { cookieToInitialState } from "wagmi";
+import { headers } from "next/headers";
+import { getConfig } from "@/utils/clients";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,12 +26,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialState = cookieToInitialState(
+    getConfig(),
+    headers().get("cookie"),
+  );
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <Providers initialState={initialState}>{children}</Providers>
       </body>
     </html>
   );
