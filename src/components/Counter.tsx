@@ -25,5 +25,9 @@ export const getCount = async ({
 };
 
 export const Counter = ({ count }: { count: number }) => {
-  return <div>Count: {count}</div>;
+  return (
+    <div className="font-[family-name:var(--font-geist-mono)] text-sm">
+      Count: {count}
+    </div>
+  );
 };

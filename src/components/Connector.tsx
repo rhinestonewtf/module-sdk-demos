@@ -1,45 +1,36 @@
 "use client";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { Button } from "./Button";
 
 export function Connector() {
   const account = useAccount();
-  const { connectors, connect, status, error } = useConnect();
+  const { connectors, connect } = useConnect();
   const { disconnect } = useDisconnect();
 
   return (
-    <>
-      <div>
-        <h2>Account</h2>
-
+    <div className="font-[family-name:var(--font-geist-mono)] text-sm flex items-end">
+      {account.status === "connected" || account.status === "reconnecting" ? (
         <div>
-          status: {account.status}
-          chainId: {account.chainId}
+          <div className="mb-2">Account: {account.address}</div>
+          {(account.status === "connected" ||
+            account.status === "reconnecting") && (
+            <Button buttonText="Disconnect" onClick={() => disconnect()} />
+          )}
         </div>
-
-        {(account.status === "connected" ||
-          account.status === "reconnecting") && (
-          <>
-            <button type="button" onClick={() => disconnect()}>
-              Disconnect
-            </button>
-          </>
-        )}
-      </div>
-
-      <div>
-        <h2>Connect</h2>
-        {connectors.map((connector) => (
-          <button
-            key={connector.uid}
-            onClick={() => connect({ connector })}
-            type="button"
-          >
-            {connector.name}
-          </button>
-        ))}
-        <div>{status}</div>
-        <div>{error?.message}</div>
-      </div>
-    </>
+      ) : (
+        <div>
+          <div className="mb-2">Connect Wallet</div>
+          <div className="flex gap-4 items-center flex-col sm:flex-row">
+            {connectors.map((connector) => (
+              <Button
+                key={connector.uid}
+                buttonText={connector.name}
+                onClick={() => connect({ connector })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

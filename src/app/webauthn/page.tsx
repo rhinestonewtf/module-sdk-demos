@@ -214,11 +214,11 @@ export default function Home() {
       hash: userOpHashToSign,
     });
 
-    const { r, s } = parseSignature(cred.signature);
+    const parsedSignature = parseSignature(cred.signature);
 
     const encodedSignature = getWebauthnValidatorSignature({
       webauthn: cred.webauthn,
-      signature: { r, s },
+      signature: parsedSignature,
       usePrecompiled: false,
     });
 
@@ -264,7 +264,7 @@ export default function Home() {
             Use the webauthn module to send a UserOperation.
           </li>
         </ol>
-        <div>
+        <div className="font-[family-name:var(--font-geist-mono)] text-sm">
           <div>
             {smartAccountClient && (
               <>Smart account: {smartAccountClient.account.address}</>
