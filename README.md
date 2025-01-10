@@ -1,6 +1,6 @@
 # Module SDK Demos
 
-todo
+A repository of frontend demos using the Module SDK. For more examples that can be run on backends too, check out the [module-sdk-tutorials](https://github.com/rhinestonewtf/module-sdk-tutorials).
 
 ## Using this repo
 
