@@ -1,20 +1,15 @@
 "use client";
 import { Button } from "@/components/Button";
 import { Connector } from "@/components/Connector";
-import {
-  CounterRef,
-  getCount,
-  getIncrementCalldata,
-} from "@/components/Counter";
+import { getCount, getIncrementCalldata } from "@/components/Counter";
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import {
-  ToKernelSmartAccountReturnType,
   toSafeSmartAccount,
   ToSafeSmartAccountReturnType,
 } from "permissionless/accounts";
-import { Chain, encodeAbiParameters, http, Transport } from "viem";
+import { Chain, http, Transport } from "viem";
 import { Erc7579Actions } from "permissionless/actions/erc7579";
 import { createSmartAccountClient, SmartAccountClient } from "permissionless";
 import {
@@ -32,6 +27,7 @@ import {
   getWebauthnValidatorMockSignature,
   getWebAuthnValidator,
   WEBAUTHN_VALIDATOR_ADDRESS,
+  getWebauthnValidatorSignature,
 } from "@rhinestone/module-sdk";
 import { baseSepolia } from "viem/chains";
 import { getAccountNonce } from "permissionless/actions";
@@ -41,6 +37,8 @@ import { erc7579Actions } from "permissionless/actions/erc7579";
 import { Footer } from "@/components/Footer";
 import { getNonce } from "@/components/NonceManager";
 
+const appId = "webauthn";
+
 export default function Home() {
   const account = useAccount();
   const publicClient = usePublicClient();
@@ -48,7 +46,7 @@ export default function Home() {
 
   const [smartAccountClient, setSmartAccountClient] = useState<
     SmartAccountClient<Transport, Chain, ToSafeSmartAccountReturnType<"0.7">> &
-      Erc7579Actions<ToKernelSmartAccountReturnType<"0.7">>
+      Erc7579Actions<ToSafeSmartAccountReturnType<"0.7">>
   >();
   const [credential, setCredential] = useState<P256Credential>(() =>
     JSON.parse(localStorage.getItem("credential") || "null"),
@@ -69,6 +67,9 @@ export default function Home() {
     } else if (!walletAccount) {
       console.error("No wallet account");
       return;
+    } else if (!publicClient) {
+      console.error("No public client");
+      return;
     }
 
     const ownableValidator = getOwnableValidator({
@@ -77,7 +78,9 @@ export default function Home() {
     });
 
     const safeAccount = await toSafeSmartAccount({
-      saltNonce: getNonce(),
+      saltNonce: getNonce({
+        appId,
+      }),
       client: publicClient,
       owners: [walletAccount],
       version: "1.4.1",
@@ -110,8 +113,20 @@ export default function Home() {
       bundlerTransport: http(pimlicoBaseSepoliaUrl),
     }).extend(erc7579Actions());
 
-    setSmartAccountClient(_smartAccountClient as any);
+    setSmartAccountClient(_smartAccountClient as any); // eslint-disable-line
     setCount(await getCount({ publicClient, account: safeAccount.address }));
+
+    if (await publicClient?.getCode({ address: safeAccount.address })) {
+      const isValidatorInstalled = await _smartAccountClient.isModuleInstalled(
+        getWebAuthnValidator({
+          pubKey: { x: 0n, y: 0n, prefix: 0 },
+          authenticatorId: "",
+        }),
+      );
+      if (isValidatorInstalled) {
+        setValidatorIsInstalled(true);
+      }
+    }
   }, [account, publicClient, walletClient]);
 
   const handleCreateCredential = useCallback(async () => {
@@ -122,7 +137,7 @@ export default function Home() {
     });
     localStorage.setItem("credential", JSON.stringify(_credential));
     setCredential(_credential);
-  }, [createSafe]);
+  }, [createSafe, credential]);
 
   const handleInstallModule = useCallback(async () => {
     if (!smartAccountClient) {
@@ -133,28 +148,24 @@ export default function Home() {
       return;
     }
 
+    setValidatorInstallationLoading(true);
+
     const { x, y, prefix } = parsePublicKey(credential.publicKey);
     const validator = getWebAuthnValidator({
       pubKey: { x, y, prefix },
       authenticatorId: credential.id,
     });
 
-    const isInstalled = false; //await smartAccountClient.isModuleInstalled(validator);
-    console.log("Is Installed:", isInstalled);
-
-    if (isInstalled) {
-      console.log("Module already installed");
-      return;
-    }
     const installOp = await smartAccountClient.installModule(validator);
-
-    setValidatorInstallationLoading(true);
 
     const receipt = await smartAccountClient.waitForUserOperationReceipt({
       hash: installOp,
     });
     console.log("receipt", receipt);
 
+    if (await smartAccountClient.isModuleInstalled(validator)) {
+      setValidatorIsInstalled(true);
+    }
     setValidatorInstallationLoading(false);
   }, [credential, smartAccountClient]);
 
@@ -165,7 +176,12 @@ export default function Home() {
     } else if (!credential) {
       console.error("No credential");
       return;
+    } else if (!publicClient) {
+      console.error("No public client");
+      return;
     }
+
+    setUserOpLoading(true);
 
     const nonce = await getAccountNonce(publicClient, {
       address: smartAccountClient.account.address,
@@ -200,32 +216,16 @@ export default function Home() {
 
     const { r, s } = parseSignature(cred.signature);
 
-    // todo: use module sdk helper
-    const encodedSignature = encodeAbiParameters(
-      [
-        { name: "authenticatorData", type: "bytes" },
-        { name: "clientDataJSON", type: "string" },
-        { name: "responseTypeLocation", type: "uint256" },
-        { name: "r", type: "uint256" },
-        { name: "s", type: "uint256" },
-        { name: "usePrecompiled", type: "bool" },
-      ],
-      [
-        cred.webauthn.authenticatorData,
-        cred.webauthn.clientDataJSON,
-        BigInt(cred.webauthn.typeIndex),
-        BigInt(r),
-        BigInt(s),
-        false,
-      ],
-    );
+    const encodedSignature = getWebauthnValidatorSignature({
+      webauthn: cred.webauthn,
+      signature: { r, s },
+      usePrecompiled: false,
+    });
 
     userOperation.signature = encodedSignature;
 
     const userOpHash =
       await smartAccountClient.sendUserOperation(userOperation);
-
-    setUserOpLoading(true);
 
     const receipt = await smartAccountClient.waitForUserOperationReceipt({
       hash: userOpHash,
@@ -273,7 +273,11 @@ export default function Home() {
           <div>
             {smartAccountClient && <>Webauthn credential: {credential.id}</>}
           </div>
-          <div>{validatorIsInstalled && <>Validator installed</>}</div>
+          <div>
+            {smartAccountClient && (
+              <>Validator {!validatorIsInstalled && "not"} installed</>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-4 items-center flex-col sm:flex-row">
@@ -283,17 +287,19 @@ export default function Home() {
           />
           <Button
             buttonText="Install Webauthn Module"
+            disabled={validatorIsInstalled}
             onClick={handleInstallModule}
             isLoading={validatorInstallationLoading}
           />
           <Button
             buttonText="Send UserOp"
+            disabled={!validatorIsInstalled}
             onClick={handleSendUserOp}
             isLoading={userOpLoading}
           />
         </div>
       </main>
-      <Footer count={count} />
+      <Footer count={count} appId={appId} />
     </div>
   );
 }
