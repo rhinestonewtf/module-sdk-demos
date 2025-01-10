@@ -21,7 +21,7 @@ export function getConfig() {
   });
 }
 
-export const pimlicoBaseSepoliaUrl = `https://api.pimlico.io/v2/${baseSepolia.id}/rpc?apikey=${process.env.PIMLICO_API_KEY}`;
+export const pimlicoBaseSepoliaUrl = `https://api.pimlico.io/v2/${baseSepolia.id}/rpc?apikey=${process.env.NEXT_PUBLIC_PIMLICO_API_KEY}`;
 
 export const pimlicoClient = createPimlicoClient({
   transport: http(pimlicoBaseSepoliaUrl),

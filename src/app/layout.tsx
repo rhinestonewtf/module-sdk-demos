@@ -28,6 +28,7 @@ export default function RootLayout({
 }>) {
   const initialState = cookieToInitialState(
     getConfig(),
+    // @ts-ignore
     headers().get("cookie"),
   );
   return (

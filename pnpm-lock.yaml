@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@rhinestone/module-sdk':
-        specifier: ^0.2.1
-        version: 0.2.1(viem@2.22.5(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10))
+        specifier: ^0.2.2
+        version: 0.2.2(viem@2.22.5(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10))
       '@tanstack/react-query':
         specifier: ^5.63.0
         version: 5.63.0(react@19.0.0)
@@ -497,8 +497,8 @@ packages:
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
     engines: {node: '>=14'}
 
-  '@rhinestone/module-sdk@0.2.1':
-    resolution: {integrity: sha512-ACWb76l95dOCqN9eBjJnlR62tHwsolBdwgtExY9ou8EBczCGCx/St8s3P3g4oKDkP46t1smK4fGMy5St4UrF3g==}
+  '@rhinestone/module-sdk@0.2.2':
+    resolution: {integrity: sha512-j4CGM6gC9QmiHr4Nsx0lGAV6HDw0XZ1fAv/qqr73f9oUZrpjikGKTl/fxWAzbcAufwb21cDrA8xVUWLYyH6tbA==}
     peerDependencies:
       viem: ^2.0.0
 
@@ -3263,7 +3263,7 @@ snapshots:
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
-  '@rhinestone/module-sdk@0.2.1(viem@2.22.5(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10))':
+  '@rhinestone/module-sdk@0.2.2(viem@2.22.5(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10))':
     dependencies:
       solady: 0.0.235
       tslib: 2.8.1
