@@ -135,8 +135,14 @@ export default function Home() {
     const _credential = await createWebAuthnCredential({
       name: "Wallet Owner",
     });
-    localStorage.setItem("credential", JSON.stringify(_credential));
     setCredential(_credential);
+    localStorage.setItem(
+      "credential",
+      JSON.stringify({
+        id: _credential.id,
+        publicKey: _credential.publicKey,
+      }),
+    );
   }, [createSafe, credential]);
 
   const handleInstallModule = useCallback(async () => {
