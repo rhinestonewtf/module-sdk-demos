@@ -33,7 +33,7 @@ export default function Home() {
           </li>
         </ol>
       </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
+      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center font-[family-name:var(--font-geist-mono)] text-sm">
         <div>
           <a href="https://docs.rhinestone.wtf/">Docs</a>
         </div>
