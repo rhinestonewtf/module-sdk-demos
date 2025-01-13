@@ -271,7 +271,9 @@ export default function Home() {
             )}
           </div>
           <div>
-            {smartAccountClient && <>Webauthn credential: {credential.id}</>}
+            {smartAccountClient && credential && (
+              <>Webauthn credential: {credential.id}</>
+            )}
           </div>
           <div>
             {smartAccountClient && (
