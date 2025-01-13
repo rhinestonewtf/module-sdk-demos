@@ -3,13 +3,25 @@ import { Button } from "@/components/Button";
 import { Connector } from "@/components/Connector";
 import { getCount, getIncrementCalldata } from "@/components/Counter";
 import Image from "next/image";
-import { useCallback, useState } from "react";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import { useCallback, useEffect, useState } from "react";
 import {
   toSafeSmartAccount,
   ToSafeSmartAccountReturnType,
 } from "permissionless/accounts";
-import { Address, Chain, Hex, http, toBytes, toHex, Transport } from "viem";
+import {
+  Account,
+  Address,
+  Chain,
+  createPublicClient,
+  encodeFunctionData,
+  Hex,
+  http,
+  parseAbi,
+  toBytes,
+  toHex,
+  Transport,
+  zeroAddress,
+} from "viem";
 import { Erc7579Actions } from "permissionless/actions/erc7579";
 import { createSmartAccountClient, SmartAccountClient } from "permissionless";
 import {
@@ -19,7 +31,6 @@ import {
 import {
   RHINESTONE_ATTESTER_ADDRESS,
   MOCK_ATTESTER_ADDRESS,
-  getOwnableValidator,
   encodeValidatorNonce,
   getAccount,
   Session,
@@ -33,15 +44,16 @@ import {
   getPermissionId,
   SMART_SESSIONS_ADDRESS,
 } from "@rhinestone/module-sdk";
-import { baseSepolia } from "viem/chains";
+import { odysseyTestnet } from "viem/chains";
 import { getAccountNonce } from "permissionless/actions";
-import { pimlicoBaseSepoliaUrl, pimlicoClient } from "@/utils/clients";
 import { erc7579Actions } from "permissionless/actions/erc7579";
 import { Footer } from "@/components/Footer";
-import { getNonce } from "@/components/NonceManager";
-import { privateKeyToAccount } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { signAuthorization } from "viem/experimental";
+import { writeContract } from "viem/actions";
+import { createPimlicoClient } from "permissionless/clients/pimlico";
 
-const appId = "smart-sessions";
+const appId = "smart-sessions-7702";
 
 const sessionOwner = privateKeyToAccount(
   process.env.NEXT_PUBLIC_SESSION_OWNER_PK! as Hex,
@@ -66,118 +78,144 @@ const session: Session = {
       actionPolicies: [getSudoPolicy()],
     },
   ],
-  chainId: BigInt(baseSepolia.id),
+  chainId: BigInt(odysseyTestnet.id),
   permitERC4337Paymaster: true,
 };
 
 export default function Home() {
-  const account = useAccount();
-  const publicClient = usePublicClient();
-  const walletClient = useWalletClient();
+  const publicClient = createPublicClient({
+    chain: odysseyTestnet,
+    transport: http("https://odyssey.ithaca.xyz"),
+  });
+
+  const [account, setAccount] = useState<Account>();
+  const [safeOwner, setSafeOwner] = useState<Account>();
 
   const [smartAccountClient, setSmartAccountClient] = useState<
     SmartAccountClient<Transport, Chain, ToSafeSmartAccountReturnType<"0.7">> &
       Erc7579Actions<ToSafeSmartAccountReturnType<"0.7">>
   >();
-  const [validatorIsInstalled, setValidatorIsInstalled] = useState(false);
+  const [accountIsDelegated, setAccountIsDelegated] = useState(false);
 
-  const [validatorInstallationLoading, setValidatorInstallationLoading] =
-    useState(false);
+  const [delegationLoading, setDelegationLoading] = useState(false);
   const [userOpLoading, setUserOpLoading] = useState(false);
   const [count, setCount] = useState<number>(0);
 
-  const handleCreateSafe = useCallback(async () => {
-    const owner = account.address;
-    const walletAccount = walletClient.data;
-    if (!owner) {
-      console.error("No owner");
+  useEffect(() => {
+    const localAccount = localStorage.getItem("7702-account") || "null";
+    if (localAccount) {
+      setAccount(privateKeyToAccount(localAccount as Hex));
+    }
+
+    const localOwner = localStorage.getItem("7702-owner") || "null";
+    if (localOwner) {
+      setSafeOwner(privateKeyToAccount(localOwner as Hex));
+    }
+  }, []);
+
+  const handleCreateAccount = useCallback(async () => {
+    const accountKey = generatePrivateKey();
+    const _account = privateKeyToAccount(accountKey);
+    setAccount(_account);
+    localStorage.setItem("7702-account", accountKey);
+
+    // note: currently the safe doesnt allow address(this) to be an owner
+    const ownerKey = generatePrivateKey();
+    const _safeOwner = privateKeyToAccount(ownerKey);
+    setSafeOwner(_safeOwner);
+    localStorage.setItem("7702-owner", ownerKey);
+
+    setAccountIsDelegated(false);
+
+    if (
+      await publicClient?.getCode({
+        address: _account.address,
+      })
+    ) {
+      setAccountIsDelegated(true);
+    }
+  }, [publicClient]);
+
+  const handleDelegateAccount = useCallback(async () => {
+    if (!account) {
+      console.error("No account");
       return;
-    } else if (!walletAccount) {
-      console.error("No wallet account");
+    } else if (!safeOwner) {
+      console.error("No safe owner");
       return;
     } else if (!publicClient) {
       console.error("No public client");
       return;
     }
 
-    const ownableValidator = getOwnableValidator({
-      owners: [owner],
-      threshold: 1,
-    });
+    setDelegationLoading(true);
 
-    const safeAccount = await toSafeSmartAccount({
-      saltNonce: getNonce({
-        appId,
-      }),
-      client: publicClient,
-      owners: [walletAccount],
-      version: "1.4.1",
-      entryPoint: {
-        address: entryPoint07Address,
-        version: "0.7",
-      },
-      safe4337ModuleAddress: "0x7579EE8307284F293B1927136486880611F20002",
-      erc7579LaunchpadAddress: "0x7579011aB74c46090561ea277Ba79D510c6C00ff",
-      attesters: [
-        RHINESTONE_ATTESTER_ADDRESS, // Rhinestone Attester
-        MOCK_ATTESTER_ADDRESS, // Mock Attester - do not use in production
-      ],
-      attestersThreshold: 1,
-      validators: [
-        {
-          address: ownableValidator.address,
-          context: ownableValidator.initData,
-        },
-      ],
-    });
-    const _smartAccountClient = createSmartAccountClient({
-      account: safeAccount,
-      paymaster: pimlicoClient,
-      chain: baseSepolia,
-      userOperation: {
-        estimateFeesPerGas: async () =>
-          (await pimlicoClient.getUserOperationGasPrice()).fast,
-      },
-      bundlerTransport: http(pimlicoBaseSepoliaUrl),
-    }).extend(erc7579Actions());
-
-    setSmartAccountClient(_smartAccountClient as any); // eslint-disable-line
-    setCount(await getCount({ publicClient, account: safeAccount.address }));
-
-    if (await publicClient?.getCode({ address: safeAccount.address })) {
-      const isValidatorInstalled = await _smartAccountClient.isModuleInstalled(
-        getSmartSessionsValidator({}),
-      );
-      if (isValidatorInstalled) {
-        setValidatorIsInstalled(true);
-      }
-    }
-  }, [account, publicClient, walletClient]);
-
-  const handleInstallModule = useCallback(async () => {
-    if (!smartAccountClient) {
-      console.error("No smart account client");
-      return;
-    }
-
-    setValidatorInstallationLoading(true);
-
-    const validator = getSmartSessionsValidator({
+    const smartSessions = getSmartSessionsValidator({
       sessions: [session],
     });
 
-    const installOp = await smartAccountClient.installModule(validator);
+    const sponsorAccount = privateKeyToAccount(
+      process.env.NEXT_PUBLIC_SPONSOR_PK! as Hex,
+    );
 
-    const receipt = await smartAccountClient.waitForUserOperationReceipt({
-      hash: installOp,
+    const authorization = await signAuthorization(publicClient, {
+      account: account,
+      contractAddress: "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
+      delegate: sponsorAccount,
     });
-    console.log("receipt", receipt);
 
-    if (await smartAccountClient.isModuleInstalled(validator)) {
-      setValidatorIsInstalled(true);
-    }
-    setValidatorInstallationLoading(false);
-  }, [smartAccountClient]);
+    const txHash = await writeContract(publicClient, {
+      address: account.address,
+      abi: parseAbi([
+        "function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external",
+      ]),
+      functionName: "setup",
+      args: [
+        [safeOwner.address],
+        BigInt(1),
+        "0x7579011aB74c46090561ea277Ba79D510c6C00ff",
+        encodeFunctionData({
+          abi: parseAbi([
+            "struct ModuleInit {address module;bytes initData;}",
+            "function addSafe7579(address safe7579,ModuleInit[] calldata validators,ModuleInit[] calldata executors,ModuleInit[] calldata fallbacks, ModuleInit[] calldata hooks,address[] calldata attesters,uint8 threshold) external",
+          ]),
+          functionName: "addSafe7579",
+          args: [
+            "0x7579EE8307284F293B1927136486880611F20002",
+            [
+              {
+                module: smartSessions.address,
+                initData: smartSessions.initData,
+              },
+            ],
+            [],
+            [],
+            [],
+            [
+              RHINESTONE_ATTESTER_ADDRESS, // Rhinestone Attester
+              MOCK_ATTESTER_ADDRESS, // Mock Attester - do not use in production
+            ],
+            1,
+          ],
+        }),
+        "0x7579EE8307284F293B1927136486880611F20002",
+        zeroAddress,
+        BigInt(0),
+        zeroAddress,
+      ],
+      account: sponsorAccount,
+      authorizationList: [authorization],
+    });
+
+    await publicClient.waitForTransactionReceipt({
+      hash: txHash,
+    });
+
+    getSmartAccountClient();
+    getDelegationState();
+
+    setDelegationLoading(false);
+  }, [account, publicClient, safeOwner]);
 
   const handleSendUserOp = useCallback(async () => {
     if (!smartAccountClient) {
@@ -218,7 +256,7 @@ export default function Home() {
     });
 
     const userOpHashToSign = getUserOperationHash({
-      chainId: baseSepolia.id,
+      chainId: odysseyTestnet.id,
       entryPointAddress: entryPoint07Address,
       entryPointVersion: "0.7",
       userOperation,
@@ -245,16 +283,105 @@ export default function Home() {
     setCount(
       await getCount({
         publicClient,
-        account: smartAccountClient.account.address,
+        account: account.address,
       }),
     );
     setUserOpLoading(false);
-  }, [publicClient, smartAccountClient]);
+  }, [publicClient, account, smartAccountClient]);
+
+  const getDelegationState = async () => {
+    if (!account) {
+      return;
+    } else if (!publicClient) {
+      return;
+    }
+
+    if (
+      await publicClient?.getCode({
+        address: account.address,
+      })
+    ) {
+      setAccountIsDelegated(true);
+    } else {
+      setAccountIsDelegated(false);
+    }
+  };
+
+  const getSmartAccountClient = async () => {
+    if (!account) {
+      return;
+    } else if (!safeOwner) {
+      return;
+    } else if (!publicClient) {
+      return;
+    }
+
+    const safeAccount = await toSafeSmartAccount({
+      address: account.address,
+      client: publicClient,
+      owners: [safeOwner],
+      version: "1.4.1",
+      entryPoint: {
+        address: entryPoint07Address,
+        version: "0.7",
+      },
+      safe4337ModuleAddress: "0x7579EE8307284F293B1927136486880611F20002",
+      erc7579LaunchpadAddress: "0x7579011aB74c46090561ea277Ba79D510c6C00ff",
+    });
+
+    const pimlicoOdysseyUrl = `https://api.pimlico.io/v2/${odysseyTestnet.id}/rpc?apikey=${process.env.NEXT_PUBLIC_PIMLICO_API_KEY}`;
+
+    const pimlicoClient = createPimlicoClient({
+      transport: http(pimlicoOdysseyUrl),
+      entryPoint: {
+        address: entryPoint07Address,
+        version: "0.7",
+      },
+    });
+
+    const _smartAccountClient = createSmartAccountClient({
+      account: safeAccount,
+      paymaster: pimlicoClient,
+      chain: odysseyTestnet,
+      userOperation: {
+        estimateFeesPerGas: async () =>
+          (await pimlicoClient.getUserOperationGasPrice()).fast,
+      },
+      bundlerTransport: http(pimlicoOdysseyUrl),
+    }).extend(erc7579Actions());
+
+    setSmartAccountClient(_smartAccountClient as any); // eslint-disable-line
+  };
+
+  useEffect(() => {
+    const fetchInitialAccountState = async () => {
+      if (!account || !publicClient) {
+        return;
+      }
+
+      if (
+        !smartAccountClient ||
+        smartAccountClient.account.address !== account.address
+      ) {
+        console.log("Fetching initial account state");
+        setCount(
+          await getCount({
+            publicClient,
+            account: account.address,
+          }),
+        );
+
+        getDelegationState();
+        getSmartAccountClient();
+      }
+    };
+
+    fetchInitialAccountState();
+  }, [account, publicClient, smartAccountClient]);
 
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Connector />
         <div className="flex flex-row items-center align-center">
           <Image
             className="dark:invert"
@@ -274,32 +401,26 @@ export default function Home() {
           </li>
         </ol>
         <div className="font-[family-name:var(--font-geist-mono)] text-sm">
-          <div>
-            {smartAccountClient && (
-              <>Smart account: {smartAccountClient.account.address}</>
-            )}
-          </div>
+          <div>{account && <>Account: {account.address}</>}</div>
           <div>
             {sessionOwner && <>Session owner: {sessionOwner.address}</>}
           </div>
           <div>
-            {smartAccountClient && (
-              <>Validator {!validatorIsInstalled && "not"} installed</>
-            )}
+            {account && <>Account {!accountIsDelegated && "not"} delegated</>}
           </div>
         </div>
 
         <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <Button buttonText="Create Account" onClick={handleCreateSafe} />
+          <Button buttonText="Create EOA" onClick={handleCreateAccount} />
           <Button
-            buttonText="Install Smart Sessions"
-            disabled={validatorIsInstalled}
-            onClick={handleInstallModule}
-            isLoading={validatorInstallationLoading}
+            buttonText="Delegate to Smart Account"
+            disabled={!account || accountIsDelegated}
+            onClick={handleDelegateAccount}
+            isLoading={delegationLoading}
           />
           <Button
             buttonText="Send UserOp"
-            disabled={!validatorIsInstalled}
+            disabled={!accountIsDelegated}
             onClick={handleSendUserOp}
             isLoading={userOpLoading}
           />
