@@ -283,7 +283,7 @@ export default function Home() {
     setCount(
       await getCount({
         publicClient,
-        account: account.address,
+        account: smartAccountClient.account.address,
       }),
     );
     setUserOpLoading(false);
