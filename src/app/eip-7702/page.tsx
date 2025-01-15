@@ -363,7 +363,6 @@ export default function Home() {
         !smartAccountClient ||
         smartAccountClient.account.address !== account.address
       ) {
-        console.log("Fetching initial account state");
         setCount(
           await getCount({
             publicClient,
