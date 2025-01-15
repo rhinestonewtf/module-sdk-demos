@@ -1,6 +1,5 @@
 "use client";
 import { Button } from "@/components/Button";
-import { Connector } from "@/components/Connector";
 import { getCount, getIncrementCalldata } from "@/components/Counter";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
@@ -102,12 +101,12 @@ export default function Home() {
   const [count, setCount] = useState<number>(0);
 
   useEffect(() => {
-    const localAccount = localStorage.getItem("7702-account") || "null";
+    const localAccount = localStorage.getItem("7702-account") || "";
     if (localAccount) {
       setAccount(privateKeyToAccount(localAccount as Hex));
     }
 
-    const localOwner = localStorage.getItem("7702-owner") || "null";
+    const localOwner = localStorage.getItem("7702-owner") || "";
     if (localOwner) {
       setSafeOwner(privateKeyToAccount(localOwner as Hex));
     }
@@ -287,9 +286,9 @@ export default function Home() {
       }),
     );
     setUserOpLoading(false);
-  }, [publicClient, account, smartAccountClient]);
+  }, [publicClient, smartAccountClient]);
 
-  const getDelegationState = async () => {
+  const getDelegationState = useCallback(async () => {
     if (!account) {
       return;
     } else if (!publicClient) {
@@ -305,9 +304,9 @@ export default function Home() {
     } else {
       setAccountIsDelegated(false);
     }
-  };
+  }, [account, publicClient]);
 
-  const getSmartAccountClient = async () => {
+  const getSmartAccountClient = useCallback(async () => {
     if (!account) {
       return;
     } else if (!safeOwner) {
@@ -351,7 +350,7 @@ export default function Home() {
     }).extend(erc7579Actions());
 
     setSmartAccountClient(_smartAccountClient as any); // eslint-disable-line
-  };
+  }, [account, publicClient, safeOwner]);
 
   useEffect(() => {
     const fetchInitialAccountState = async () => {
@@ -376,7 +375,13 @@ export default function Home() {
     };
 
     fetchInitialAccountState();
-  }, [account, publicClient, smartAccountClient]);
+  }, [
+    account,
+    publicClient,
+    smartAccountClient,
+    getDelegationState,
+    getSmartAccountClient,
+  ]);
 
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
