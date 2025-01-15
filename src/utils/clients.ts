@@ -4,18 +4,19 @@ import {
   entryPoint07Address,
 } from "viem/account-abstraction";
 import { http, cookieStorage, createConfig, createStorage } from "wagmi";
-import { baseSepolia } from "wagmi/chains";
+import { baseSepolia, mainnet } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 
 export function getConfig() {
   return createConfig({
-    chains: [baseSepolia],
+    chains: [mainnet, baseSepolia],
     connectors: [injected()],
     storage: createStorage({
       storage: cookieStorage,
     }),
     ssr: true,
     transports: {
+      [mainnet.id]: http("https://eth.drpc.org"),
       [baseSepolia.id]: http("https://sepolia.base.org"),
     },
   });
