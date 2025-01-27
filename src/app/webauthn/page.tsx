@@ -31,7 +31,8 @@ import {
 } from "@rhinestone/module-sdk";
 import { baseSepolia } from "viem/chains";
 import { getAccountNonce } from "permissionless/actions";
-import { parsePublicKey, parseSignature, sign } from "webauthn-p256";
+import { PublicKey } from "ox";
+import { sign } from "ox/WebAuthnP256";
 import { pimlicoBaseSepoliaUrl, pimlicoClient } from "@/utils/clients";
 import { erc7579Actions } from "permissionless/actions/erc7579";
 import { Footer } from "@/components/Footer";
@@ -156,7 +157,7 @@ export default function Home() {
 
     setValidatorInstallationLoading(true);
 
-    const { x, y, prefix } = parsePublicKey(credential.publicKey);
+    const { x, y, prefix } = PublicKey.from(credential.publicKey);
     const validator = getWebAuthnValidator({
       pubKey: { x, y, prefix },
       authenticatorId: credential.id,
@@ -215,16 +216,14 @@ export default function Home() {
       userOperation,
     });
 
-    const cred = await sign({
+    const { metadata: webauthn, signature } = await sign({
       credentialId: credential.id,
-      hash: userOpHashToSign,
+      challenge: userOpHashToSign,
     });
 
-    const parsedSignature = parseSignature(cred.signature);
-
     const encodedSignature = getWebauthnValidatorSignature({
-      webauthn: cred.webauthn,
-      signature: parsedSignature,
+      webauthn,
+      signature,
       usePrecompiled: false,
     });
 
