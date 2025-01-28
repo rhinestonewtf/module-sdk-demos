@@ -9,15 +9,7 @@ import {
   toSafeSmartAccount,
   ToSafeSmartAccountReturnType,
 } from "permissionless/accounts";
-import {
-  Address,
-  Chain,
-  encodePacked,
-  http,
-  keccak256,
-  Transport,
-  zeroHash,
-} from "viem";
+import { Address, Chain, http, Transport } from "viem";
 import { Erc7579Actions } from "permissionless/actions/erc7579";
 import { createSmartAccountClient, SmartAccountClient } from "permissionless";
 import {
@@ -217,35 +209,6 @@ export default function Home() {
       }),
     });
 
-    // const hash = keccak256("0xabc");
-    //
-    // const { metadata: webauthn, signature } = await sign({
-    //   credentialId: credential.id,
-    //   challenge: hash,
-    // });
-    //
-    // const sig = getWebauthnValidatorSignature({
-    //   webauthn,
-    //   signature,
-    //   usePrecompiled: false,
-    // });
-    //
-    // const packedSig = encodePacked(
-    //   ["address", "bytes"],
-    //   [WEBAUTHN_VALIDATOR_ADDRESS, sig],
-    // );
-    //
-    // console.log("packedSig", packedSig);
-    // console.log(zeroHash);
-    // console.log(smartAccountClient.account.address);
-
-    // const valid = await publicClient.verifyMessage({
-    //   address: smartAccountClient.account.address,
-    //   message: { raw: hash },
-    //   signature: packedSig,
-    // });
-    // console.log(valid);
-
     const userOperation = await smartAccountClient.prepareUserOperation({
       account: smartAccountClient.account,
       calls: [getIncrementCalldata()],
@@ -270,17 +233,6 @@ export default function Home() {
       signature,
       usePrecompiled: false,
     });
-
-    const valid = await publicClient.verifyMessage({
-      address: smartAccountClient.account.address,
-      message: { raw: userOpHashToSign },
-      signature: encodePacked(
-        ["address", "bytes"],
-        [GLOBAL_CONSTANTS.WEBAUTHN_VALIDATOR_ADDRESS, encodedSignature],
-      ),
-    });
-
-    console.log("here", valid);
 
     userOperation.signature = encodedSignature;
 
