@@ -9,7 +9,15 @@ import {
   toSafeSmartAccount,
   ToSafeSmartAccountReturnType,
 } from "permissionless/accounts";
-import { Chain, http, Transport } from "viem";
+import {
+  Address,
+  Chain,
+  encodePacked,
+  http,
+  keccak256,
+  Transport,
+  zeroHash,
+} from "viem";
 import { Erc7579Actions } from "permissionless/actions/erc7579";
 import { createSmartAccountClient, SmartAccountClient } from "permissionless";
 import {
@@ -26,8 +34,9 @@ import {
   getAccount,
   getWebauthnValidatorMockSignature,
   getWebAuthnValidator,
-  WEBAUTHN_VALIDATOR_ADDRESS,
   getWebauthnValidatorSignature,
+  setGlobalConstants,
+  GLOBAL_CONSTANTS,
 } from "@rhinestone/module-sdk";
 import { baseSepolia } from "viem/chains";
 import { getAccountNonce } from "permissionless/actions";
@@ -39,6 +48,12 @@ import { Footer } from "@/components/Footer";
 import { getNonce } from "@/components/NonceManager";
 
 const appId = "webauthn";
+
+const overrides = {
+  WEBAUTHN_VALIDATOR_ADDRESS:
+    "0x2f167e55d42584f65e2e30a748f41ee75a311414" as Address,
+};
+setGlobalConstants(overrides);
 
 export default function Home() {
   const account = useAccount();
@@ -198,9 +213,38 @@ export default function Home() {
           address: smartAccountClient.account.address,
           type: "safe",
         }),
-        validator: WEBAUTHN_VALIDATOR_ADDRESS,
+        validator: GLOBAL_CONSTANTS.WEBAUTHN_VALIDATOR_ADDRESS,
       }),
     });
+
+    // const hash = keccak256("0xabc");
+    //
+    // const { metadata: webauthn, signature } = await sign({
+    //   credentialId: credential.id,
+    //   challenge: hash,
+    // });
+    //
+    // const sig = getWebauthnValidatorSignature({
+    //   webauthn,
+    //   signature,
+    //   usePrecompiled: false,
+    // });
+    //
+    // const packedSig = encodePacked(
+    //   ["address", "bytes"],
+    //   [WEBAUTHN_VALIDATOR_ADDRESS, sig],
+    // );
+    //
+    // console.log("packedSig", packedSig);
+    // console.log(zeroHash);
+    // console.log(smartAccountClient.account.address);
+
+    // const valid = await publicClient.verifyMessage({
+    //   address: smartAccountClient.account.address,
+    //   message: { raw: hash },
+    //   signature: packedSig,
+    // });
+    // console.log(valid);
 
     const userOperation = await smartAccountClient.prepareUserOperation({
       account: smartAccountClient.account,
@@ -226,6 +270,17 @@ export default function Home() {
       signature,
       usePrecompiled: false,
     });
+
+    const valid = await publicClient.verifyMessage({
+      address: smartAccountClient.account.address,
+      message: { raw: userOpHashToSign },
+      signature: encodePacked(
+        ["address", "bytes"],
+        [GLOBAL_CONSTANTS.WEBAUTHN_VALIDATOR_ADDRESS, encodedSignature],
+      ),
+    });
+
+    console.log("here", valid);
 
     userOperation.signature = encodedSignature;
 
