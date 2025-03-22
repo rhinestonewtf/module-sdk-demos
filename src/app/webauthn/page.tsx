@@ -1,15 +1,13 @@
 "use client";
 import { Button } from "@/components/Button";
-import { Connector } from "@/components/Connector";
 import { getCount, getIncrementCalldata } from "@/components/Counter";
 import Image from "next/image";
 import { useCallback, useState } from "react";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import {
   toSafeSmartAccount,
   ToSafeSmartAccountReturnType,
 } from "permissionless/accounts";
-import { Chain, http, Transport } from "viem";
+import { Chain, createPublicClient, http, Transport } from "viem";
 import { Erc7579Actions } from "permissionless/actions/erc7579";
 import { createSmartAccountClient, SmartAccountClient } from "permissionless";
 import {
@@ -21,7 +19,6 @@ import {
 import {
   RHINESTONE_ATTESTER_ADDRESS,
   MOCK_ATTESTER_ADDRESS,
-  getOwnableValidator,
   encodeValidatorNonce,
   getAccount,
   getWebauthnValidatorMockSignature,
@@ -37,14 +34,11 @@ import { pimlicoBaseSepoliaUrl, pimlicoClient } from "@/utils/clients";
 import { erc7579Actions } from "permissionless/actions/erc7579";
 import { Footer } from "@/components/Footer";
 import { getNonce } from "@/components/NonceManager";
+import { toAccount } from "viem/accounts";
 
 const appId = "webauthn";
 
 export default function Home() {
-  const account = useAccount();
-  const publicClient = usePublicClient();
-  const walletClient = useWalletClient();
-
   const [smartAccountClient, setSmartAccountClient] = useState<
     SmartAccountClient<Transport, Chain, ToSafeSmartAccountReturnType<"0.7">> &
       Erc7579Actions<ToSafeSmartAccountReturnType<"0.7">>
@@ -52,30 +46,33 @@ export default function Home() {
   const [credential, setCredential] = useState<P256Credential>(() =>
     JSON.parse(localStorage.getItem("credential") || "null"),
   );
-  const [validatorIsInstalled, setValidatorIsInstalled] = useState(false);
 
-  const [validatorInstallationLoading, setValidatorInstallationLoading] =
-    useState(false);
   const [userOpLoading, setUserOpLoading] = useState(false);
   const [count, setCount] = useState<number>(0);
 
-  const createSafe = useCallback(async () => {
-    const owner = account.address;
-    const walletAccount = walletClient.data;
-    if (!owner) {
-      console.error("No owner");
-      return;
-    } else if (!walletAccount) {
-      console.error("No wallet account");
-      return;
-    } else if (!publicClient) {
-      console.error("No public client");
-      return;
-    }
+  const createSafe = useCallback(async (_credential: P256Credential) => {
+    const publicClient = createPublicClient({
+      chain: baseSepolia,
+      transport: http(),
+    });
 
-    const ownableValidator = getOwnableValidator({
-      owners: [owner],
-      threshold: 1,
+    const { x, y, prefix } = PublicKey.from(_credential.publicKey);
+    const webauthnValidator = getWebAuthnValidator({
+      pubKey: { x, y, prefix },
+      authenticatorId: _credential.id,
+    });
+
+    const deadOwner = toAccount({
+      address: "0x000000000000000000000000000000000000dead",
+      async signMessage() {
+        return "0x";
+      },
+      async signTransaction() {
+        return "0x";
+      },
+      async signTypedData() {
+        return "0x";
+      },
     });
 
     const safeAccount = await toSafeSmartAccount({
@@ -83,7 +80,7 @@ export default function Home() {
         appId,
       }),
       client: publicClient,
-      owners: [walletAccount],
+      owners: [deadOwner],
       version: "1.4.1",
       entryPoint: {
         address: entryPoint07Address,
@@ -98,8 +95,8 @@ export default function Home() {
       attestersThreshold: 1,
       validators: [
         {
-          address: ownableValidator.address,
-          context: ownableValidator.initData,
+          address: webauthnValidator.address,
+          context: webauthnValidator.initData,
         },
       ],
     });
@@ -115,27 +112,19 @@ export default function Home() {
     }).extend(erc7579Actions());
 
     setSmartAccountClient(_smartAccountClient as any); // eslint-disable-line
+    // @ts-ignore
     setCount(await getCount({ publicClient, account: safeAccount.address }));
-
-    if (await publicClient?.getCode({ address: safeAccount.address })) {
-      const isValidatorInstalled = await _smartAccountClient.isModuleInstalled(
-        getWebAuthnValidator({
-          pubKey: { x: 0n, y: 0n, prefix: 0 },
-          authenticatorId: "",
-        }),
-      );
-      if (isValidatorInstalled) {
-        setValidatorIsInstalled(true);
-      }
-    }
-  }, [account, publicClient, walletClient]);
+  }, []);
 
   const handleCreateCredential = useCallback(async () => {
-    await createSafe();
-    if (credential) return;
-    const _credential = await createWebAuthnCredential({
-      name: "Wallet Owner",
-    });
+    let _credential;
+    if (credential) {
+      _credential = credential;
+    } else {
+      _credential = await createWebAuthnCredential({
+        name: "Wallet Owner",
+      });
+    }
     setCredential(_credential);
     localStorage.setItem(
       "credential",
@@ -144,37 +133,8 @@ export default function Home() {
         publicKey: _credential.publicKey,
       }),
     );
+    await createSafe(_credential);
   }, [createSafe, credential]);
-
-  const handleInstallModule = useCallback(async () => {
-    if (!smartAccountClient) {
-      console.error("No smart account client");
-      return;
-    } else if (!credential) {
-      console.error("No credential");
-      return;
-    }
-
-    setValidatorInstallationLoading(true);
-
-    const { x, y, prefix } = PublicKey.from(credential.publicKey);
-    const validator = getWebAuthnValidator({
-      pubKey: { x, y, prefix },
-      authenticatorId: credential.id,
-    });
-
-    const installOp = await smartAccountClient.installModule(validator);
-
-    const receipt = await smartAccountClient.waitForUserOperationReceipt({
-      hash: installOp,
-    });
-    console.log("receipt", receipt);
-
-    if (await smartAccountClient.isModuleInstalled(validator)) {
-      setValidatorIsInstalled(true);
-    }
-    setValidatorInstallationLoading(false);
-  }, [credential, smartAccountClient]);
 
   const handleSendUserOp = useCallback(async () => {
     if (!smartAccountClient) {
@@ -183,10 +143,12 @@ export default function Home() {
     } else if (!credential) {
       console.error("No credential");
       return;
-    } else if (!publicClient) {
-      console.error("No public client");
-      return;
     }
+
+    const publicClient = createPublicClient({
+      chain: baseSepolia,
+      transport: http(),
+    });
 
     setUserOpLoading(true);
 
@@ -239,17 +201,17 @@ export default function Home() {
 
     setCount(
       await getCount({
+        // @ts-ignore
         publicClient,
         account: smartAccountClient.account.address,
       }),
     );
     setUserOpLoading(false);
-  }, [credential, publicClient, smartAccountClient]);
+  }, [credential, smartAccountClient]);
 
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Connector requiredChainId={baseSepolia.id} />
         <div className="flex flex-row items-center align-center">
           <Image
             className="dark:invert"
@@ -262,9 +224,7 @@ export default function Home() {
           <span className="text-lg font-bold">x Webauthn</span>
         </div>
         <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">Connect your EOA.</li>
-          <li className="mb-2">Create a Webauthn credential.</li>
-          <li className="mb-2">Install the webauthn module.</li>
+          <li className="mb-2">Create a Webauthn credential and account.</li>
           <li className="mb-2">
             Use the webauthn module to send a UserOperation.
           </li>
@@ -280,11 +240,11 @@ export default function Home() {
               <>Webauthn credential: {credential.id}</>
             )}
           </div>
-          <div>
-            {smartAccountClient && (
-              <>Validator {!validatorIsInstalled && "not"} installed</>
-            )}
-          </div>
+          {/* <div> */}
+          {/*   {smartAccountClient && ( */}
+          {/*     <>Validator {!validatorIsInstalled && "not"} installed</> */}
+          {/*   )} */}
+          {/* </div> */}
         </div>
 
         <div className="flex gap-4 items-center flex-col sm:flex-row">
@@ -292,15 +252,15 @@ export default function Home() {
             buttonText="Create Credential"
             onClick={handleCreateCredential}
           />
-          <Button
-            buttonText="Install Webauthn Module"
-            disabled={validatorIsInstalled}
-            onClick={handleInstallModule}
-            isLoading={validatorInstallationLoading}
-          />
+          {/* <Button */}
+          {/*   buttonText="Install Webauthn Module" */}
+          {/*   disabled={validatorIsInstalled} */}
+          {/*   onClick={handleInstallModule} */}
+          {/*   isLoading={validatorInstallationLoading} */}
+          {/* /> */}
           <Button
             buttonText="Send UserOp"
-            disabled={!validatorIsInstalled}
+            disabled={!smartAccountClient}
             onClick={handleSendUserOp}
             isLoading={userOpLoading}
           />
