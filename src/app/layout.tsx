@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Rhinestone Module SDK Demos",
-  description: "Frontend demos using the Module SDK",
+  title: "Rhinestone Demos",
+  description: "Showcases of Rhienstone tech",
 };
 
 export default function RootLayout({

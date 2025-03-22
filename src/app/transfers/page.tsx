@@ -221,7 +221,7 @@ export default function Home() {
             height={38}
             priority
           />{" "}
-          <span className="text-lg font-bold">x Webauthn</span>
+          <span className="text-lg font-bold">x Omni Account Transfers</span>
         </div>
         <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
           <li className="mb-2">Create a Webauthn credential and account.</li>
