@@ -2,12 +2,21 @@
 import { Button } from "@/components/Button";
 import { getCount, getIncrementCalldata } from "@/components/Counter";
 import Image from "next/image";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   toSafeSmartAccount,
   ToSafeSmartAccountReturnType,
 } from "permissionless/accounts";
-import { Chain, createPublicClient, http, Transport } from "viem";
+import {
+  Chain,
+  createPublicClient,
+  encodeFunctionData,
+  encodePacked,
+  erc20Abi,
+  http,
+  Transport,
+  zeroAddress,
+} from "viem";
 import { Erc7579Actions } from "permissionless/actions/erc7579";
 import { createSmartAccountClient, SmartAccountClient } from "permissionless";
 import {
@@ -26,17 +35,30 @@ import {
   WEBAUTHN_VALIDATOR_ADDRESS,
   getWebauthnValidatorSignature,
 } from "@rhinestone/module-sdk";
-import { baseSepolia } from "viem/chains";
+import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { getAccountNonce } from "permissionless/actions";
 import { PublicKey } from "ox";
 import { sign } from "ox/WebAuthnP256";
-import { pimlicoBaseSepoliaUrl, pimlicoClient } from "@/utils/clients";
+import { pimlicoClient } from "@/utils/clients";
 import { erc7579Actions } from "permissionless/actions/erc7579";
 import { Footer } from "@/components/Footer";
 import { getNonce } from "@/components/NonceManager";
 import { toAccount } from "viem/accounts";
+import {
+  BundleStatus,
+  getOrchestrator,
+  getOrderBundleHash,
+  getTokenAddress,
+  MetaIntent,
+  PostOrderBundleResult,
+  SignedMultiChainCompact,
+} from "@rhinestone/orchestrator-sdk";
+import { getBundle, sendIntent } from "@/components/orchestrator";
 
 const appId = "webauthn";
+
+const sourceChain = baseSepolia;
+const targetChain = arbitrumSepolia;
 
 export default function Home() {
   const [smartAccountClient, setSmartAccountClient] = useState<
@@ -47,12 +69,42 @@ export default function Home() {
     JSON.parse(localStorage.getItem("credential") || "null"),
   );
 
-  const [userOpLoading, setUserOpLoading] = useState(false);
-  const [count, setCount] = useState<number>(0);
+  const [isAccountDeployed, setIsAccountDeployed] = useState(false);
+
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [deployAccountLoading, setDeployAccountLoading] = useState(false);
+  const [usdcBalance, setUsdcBalance] = useState<number>(0);
+
+  const [targetAddress, setTargetAddress] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+
+  const [error, setError] = useState<string | null>(null);
+
+  const getBalance = async () => {
+    if (smartAccountClient) {
+      const publicClient = createPublicClient({
+        chain: sourceChain,
+        transport: http(),
+      });
+
+      const balance = await publicClient.readContract({
+        address: getTokenAddress("USDC", sourceChain.id),
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [smartAccountClient.account.address],
+      });
+
+      setUsdcBalance(Number(balance) / 10 ** 6);
+    }
+  };
+
+  useEffect(() => {
+    getBalance();
+  }, [smartAccountClient]);
 
   const createSafe = useCallback(async (_credential: P256Credential) => {
     const publicClient = createPublicClient({
-      chain: baseSepolia,
+      chain: sourceChain,
       transport: http(),
     });
 
@@ -103,17 +155,23 @@ export default function Home() {
     const _smartAccountClient = createSmartAccountClient({
       account: safeAccount,
       paymaster: pimlicoClient,
-      chain: baseSepolia,
+      chain: sourceChain,
       userOperation: {
         estimateFeesPerGas: async () =>
           (await pimlicoClient.getUserOperationGasPrice()).fast,
       },
-      bundlerTransport: http(pimlicoBaseSepoliaUrl),
+      bundlerTransport: http(
+        `https://api.pimlico.io/v2/${sourceChain.id}/rpc?apikey=${process.env.NEXT_PUBLIC_PIMLICO_API_KEY}`,
+      ),
     }).extend(erc7579Actions());
 
+    const isDeployed =
+      (await publicClient.getCode({
+        address: safeAccount.address,
+      })) !== "0x";
+    setIsAccountDeployed(isDeployed);
+
     setSmartAccountClient(_smartAccountClient as any); // eslint-disable-line
-    // @ts-ignore
-    setCount(await getCount({ publicClient, account: safeAccount.address }));
   }, []);
 
   const handleCreateCredential = useCallback(async () => {
@@ -136,7 +194,7 @@ export default function Home() {
     await createSafe(_credential);
   }, [createSafe, credential]);
 
-  const handleSendUserOp = useCallback(async () => {
+  const handleDeployAccount = useCallback(async () => {
     if (!smartAccountClient) {
       console.error("No smart account client");
       return;
@@ -145,12 +203,17 @@ export default function Home() {
       return;
     }
 
+    if (isAccountDeployed) {
+      console.error("Account already deployed");
+      return;
+    }
+
+    setDeployAccountLoading(true);
+
     const publicClient = createPublicClient({
-      chain: baseSepolia,
+      chain: sourceChain,
       transport: http(),
     });
-
-    setUserOpLoading(true);
 
     const nonce = await getAccountNonce(publicClient, {
       address: smartAccountClient.account.address,
@@ -166,13 +229,18 @@ export default function Home() {
 
     const userOperation = await smartAccountClient.prepareUserOperation({
       account: smartAccountClient.account,
-      calls: [getIncrementCalldata()],
+      calls: [
+        {
+          to: zeroAddress,
+          data: "0x",
+        },
+      ],
       nonce,
       signature: getWebauthnValidatorMockSignature(),
     });
 
     const userOpHashToSign = getUserOperationHash({
-      chainId: baseSepolia.id,
+      chainId: sourceChain.id,
       entryPointAddress: entryPoint07Address,
       entryPointVersion: "0.7",
       userOperation,
@@ -199,14 +267,65 @@ export default function Home() {
     });
     console.log("UserOp receipt: ", receipt);
 
-    setCount(
-      await getCount({
-        // @ts-ignore
-        publicClient,
-        account: smartAccountClient.account.address,
-      }),
+    setDeployAccountLoading(false);
+    setIsAccountDeployed(true);
+  }, [credential, smartAccountClient, isAccountDeployed]);
+
+  const handleTransfer = useCallback(async () => {
+    setError(null);
+    if (!smartAccountClient) {
+      console.log("No smart account client");
+      return;
+    } else if (!credential) {
+      console.log("No credential");
+      return;
+    }
+
+    // console.log(targetAddress, amount);
+    //
+    // if (!targetAddress || !amount) {
+    //   console.log(targetAddress, amount);
+    //   console.log("Please enter a target address and amount");
+    //   setError("Please enter a target address and amount");
+    //   return;
+    // } else if (Number(amount) > usdcBalance) {
+    //   setError("Insufficient balance");
+    //   return;
+    // }
+
+    const { orderPath, orderBundleHash } = await getBundle({
+      targetChain,
+      account: {
+        address: smartAccountClient.account.address,
+        initCode: "0x",
+      },
+      transfer: {
+        amount: BigInt(1),
+        recipient: "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+      },
+    });
+
+    const { metadata: webauthn, signature } = await sign({
+      credentialId: credential.id,
+      challenge: orderBundleHash,
+    });
+
+    const encodedSignature = getWebauthnValidatorSignature({
+      webauthn,
+      signature,
+      usePrecompiled: false,
+    });
+
+    const packedSig = encodePacked(
+      ["address", "bytes"],
+      [WEBAUTHN_VALIDATOR_ADDRESS, encodedSignature],
     );
-    setUserOpLoading(false);
+
+    await sendIntent({
+      orderPath,
+      signature: packedSig,
+      initCode: "0x",
+    });
   }, [credential, smartAccountClient]);
 
   return (
@@ -224,9 +343,12 @@ export default function Home() {
           <span className="text-lg font-bold">x Omni Account Transfers</span>
         </div>
         <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">Create a Webauthn credential and account.</li>
+          <li className="mb-2">Create a Webauthn Omni Account.</li>
           <li className="mb-2">
-            Use the webauthn module to send a UserOperation.
+            Fund and deploy the account on the source chain.
+          </li>
+          <li className="mb-2">
+            Create an instant transfer on the target chain.
           </li>
         </ol>
         <div className="font-[family-name:var(--font-geist-mono)] text-sm">
@@ -237,25 +359,55 @@ export default function Home() {
           </div>
           <div>
             {smartAccountClient && credential && (
-              <>Webauthn credential: {credential.id}</>
+              <>Balance on Base: {usdcBalance} USDC</>
             )}
           </div>
+          <div>{isAccountDeployed && <>Account deployed on Base</>}</div>
+        </div>
+
+        <div className="flex gap-4 justify-center items-center flex-col sm:flex-row">
+          <input
+            className="bg-white rounded-2xl text-black px-4 py-1"
+            placeholder="Target address"
+            onChange={(e) => setTargetAddress(e.target.value)}
+            value={targetAddress}
+          />
+          <input
+            className="bg-white rounded-2xl text-black px-4 py-1"
+            placeholder="Amount in USDC"
+            onChange={(e) => setAmount(e.target.value)}
+            value={amount}
+            type="number"
+          />
         </div>
 
         <div className="flex gap-4 items-center flex-col sm:flex-row">
           <Button
             buttonText="Create Credential"
             onClick={handleCreateCredential}
+            disabled={!!smartAccountClient}
           />
           <Button
-            buttonText="Send UserOp"
-            disabled={!smartAccountClient}
-            onClick={handleSendUserOp}
-            isLoading={userOpLoading}
+            buttonText="Deploy Account"
+            disabled={!smartAccountClient || isAccountDeployed}
+            onClick={handleDeployAccount}
+            isLoading={deployAccountLoading}
+          />
+
+          <Button
+            buttonText="Send Transfer"
+            disabled={!isAccountDeployed}
+            onClick={handleTransfer}
+            isLoading={transferLoading}
           />
         </div>
+        {error && (
+          <div className="text-red-500 text-center flex-row items-center justify-center">
+            {error}
+          </div>
+        )}
       </main>
-      <Footer count={count} appId={appId} />
+      <Footer count={0} appId={appId} />
     </div>
   );
 }

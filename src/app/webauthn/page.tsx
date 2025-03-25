@@ -224,7 +224,7 @@ export default function Home() {
           <span className="text-lg font-bold">x Webauthn</span>
         </div>
         <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">Create a Webauthn credential and account.</li>
+          <li className="mb-2">Create a Webauthn account.</li>
           <li className="mb-2">
             Use the webauthn module to send a UserOperation.
           </li>
