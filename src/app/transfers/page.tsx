@@ -33,6 +33,7 @@ import { sign } from "ox/WebAuthnP256";
 import { Footer } from "@/components/Footer";
 import { getNonce } from "@/components/NonceManager";
 import {
+  BundleStatus,
   getHookAddress,
   getSameChainModuleAddress,
   getTargetModuleAddress,
@@ -40,8 +41,7 @@ import {
 } from "@rhinestone/orchestrator-sdk";
 import { SmartAccount } from "@/utils/types";
 import { deployAccount } from "@/utils/deployment";
-import { getBundle, sendIntent } from "@/utils/orchestrator";
-import { verifyHash } from "viem/actions";
+import { getBundle, getBundleStatus, sendIntent } from "@/utils/orchestrator";
 
 const appId = "omni-transfers";
 
@@ -82,6 +82,12 @@ export default function Home() {
       setUsdcBalance(Number(balance) / 10 ** 6);
     }
   };
+
+  useEffect(() => {
+    if (credential && !smartAccount) {
+      createSafe(credential);
+    }
+  }, [credential, smartAccount]);
 
   useEffect(() => {
     getBalance();
@@ -298,11 +304,7 @@ export default function Home() {
       return;
     }
 
-    console.log(targetAddress, amount);
-
     if (!targetAddress || !amount) {
-      console.log(targetAddress, amount);
-      console.log("Please enter a target address and amount");
       setError("Please enter a target address and amount");
       return;
     } else if (!isAddress(targetAddress, { strict: false })) {
@@ -357,7 +359,7 @@ export default function Home() {
 
     const isDeployed = !!code && code !== "0x";
 
-    await sendIntent({
+    const bundleId = await sendIntent({
       orderPath,
       signature: packedSig,
       initCode: isDeployed
@@ -367,6 +369,21 @@ export default function Home() {
             [smartAccount.initCode.factory, smartAccount.initCode.factoryData],
           ),
     });
+
+    let bundleStatus = await getBundleStatus({ bundleId });
+
+    let checks = 0;
+    // check again every 2 seconds until the status changes
+    // // @ts-ignore
+    while (bundleStatus.status === BundleStatus.PENDING) {
+      if (checks > 20) {
+        throw new Error("Bundle failed to execute");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      bundleStatus = await getBundleStatus({ bundleId });
+      console.log(bundleStatus);
+      checks++;
+    }
 
     setAmount("");
     setTargetAddress("");
@@ -392,11 +409,9 @@ export default function Home() {
         <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
           <li className="mb-2">Create a Webauthn Omni Account.</li>
           <li className="mb-2">
-            Fund and deploy the account on the source chain.
+            Fund and deploy the account with USDC on Base.
           </li>
-          <li className="mb-2">
-            Create an instant transfer on the target chain.
-          </li>
+          <li className="mb-2">Create an instant transfer on Arbitrum.</li>
         </ol>
         <div className="font-[family-name:var(--font-geist-mono)] text-sm">
           <div>
@@ -442,7 +457,7 @@ export default function Home() {
           />
 
           <Button
-            buttonText="Send Transfer"
+            buttonText="Send Transfer on Arb"
             disabled={!isAccountDeployed}
             onClick={handleTransfer}
             isLoading={transferLoading}

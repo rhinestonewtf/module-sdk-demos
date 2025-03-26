@@ -101,22 +101,9 @@ export const sendIntent = async ({
     ]);
 
   // check bundle status
-  let bundleStatus = await orchestrator.getBundleStatus(
-    bundleResults[0].bundleId,
-  );
+  return bundleResults[0].bundleId;
+};
 
-  let checks = 0;
-  // check again every 2 seconds until the status changes
-  // // @ts-ignore
-  while (bundleStatus.status === BundleStatus.PENDING) {
-    if (checks > 60) {
-      throw new Error("Bundle failed to execute");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    bundleStatus = await orchestrator.getBundleStatus(
-      bundleResults[0].bundleId,
-    );
-    console.log(bundleStatus);
-    checks++;
-  }
+export const getBundleStatus = async ({ bundleId }: { bundleId: bigint }) => {
+  return orchestrator.getBundleStatus(bundleId);
 };
