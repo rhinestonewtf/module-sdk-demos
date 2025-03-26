@@ -13,23 +13,38 @@ export default function Home() {
             height={38}
             priority
           />{" "}
-          <span className="text-lg font-bold">Module SDK Demos</span>
+          <span className="text-lg font-bold">Demos</span>
         </div>
         <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            <a href="/smart-sessions" className="underline">
-              Smart Sessions
-            </a>
+          <li className="">
+            Omni Account
+            <ol className="list-inside list-[lower-alpha] pl-4 my-2">
+              <li className="mb-2">
+                <a href="/transfers" className="underline">
+                  Transfers
+                </a>
+              </li>
+            </ol>
           </li>
-          <li className="mb-2">
-            <a href="/eip-7702" className="underline">
-              EIP-7702
-            </a>
-          </li>
-          <li className="mb-2">
-            <a href="/webauthn" className="underline">
-              Webauthn
-            </a>
+          <li className="">
+            Modules
+            <ol className="list-inside list-[lower-alpha] pl-4 my-2">
+              <li className="mb-2">
+                <a href="/smart-sessions" className="underline">
+                  Smart Sessions
+                </a>
+              </li>
+              <li className="mb-2">
+                <a href="/eip-7702" className="underline">
+                  EIP-7702
+                </a>
+              </li>
+              <li className="mb-2">
+                <a href="/webauthn" className="underline">
+                  Webauthn
+                </a>
+              </li>
+            </ol>
           </li>
         </ol>
       </main>
