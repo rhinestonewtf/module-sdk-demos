@@ -381,6 +381,10 @@ export default function Home() {
           ),
     });
 
+    setAmount("");
+    setTargetAddress("");
+    getBalance();
+
     setTransferLoading(false);
   }, [credential, smartAccount, amount, targetAddress, usdcBalance]);
 
