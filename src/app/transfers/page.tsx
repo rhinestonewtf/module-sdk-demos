@@ -351,19 +351,6 @@ export default function Home() {
       transport: http(),
     });
 
-    // console.log(smartAccount.address, orderBundleHash, packedSig);
-    //
-    // const isValidSig = await verifyHash(publicClient, {
-    //   address: smartAccount.address,
-    //   hash: orderBundleHash,
-    //   signature: packedSig,
-    // });
-    // console.log("isValidSig", isValidSig);
-    // if (!isValidSig) {
-    //   console.error("Invalid signature");
-    //   return;
-    // }
-
     const code = await publicClient.getCode({
       address: smartAccount.address,
     });
