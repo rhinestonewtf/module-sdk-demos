@@ -27,7 +27,7 @@ import {
   WEBAUTHN_VALIDATOR_ADDRESS,
   getWebauthnValidatorSignature,
 } from "@rhinestone/module-sdk";
-import { arbitrumSepolia, baseSepolia } from "viem/chains";
+import { arbitrum, arbitrumSepolia, base, baseSepolia } from "viem/chains";
 import { PublicKey } from "ox";
 import { sign } from "ox/WebAuthnP256";
 import { Footer } from "@/components/Footer";
@@ -41,11 +41,12 @@ import {
 import { SmartAccount } from "@/utils/types";
 import { deployAccount } from "@/utils/deployment";
 import { getBundle, sendIntent } from "@/utils/orchestrator";
+import { verifyHash } from "viem/actions";
 
 const appId = "omni-transfers";
 
-const sourceChain = baseSepolia;
-const targetChain = arbitrumSepolia;
+const sourceChain = base;
+const targetChain = arbitrum;
 
 export default function Home() {
   const [smartAccount, setSmartAccount] = useState<SmartAccount | null>(null);
@@ -324,7 +325,7 @@ export default function Home() {
         initCode: "0x",
       },
       transfer: {
-        amount: BigInt(amount),
+        amount: BigInt(Number(amount) * 10 ** 6),
         recipient: targetAddress,
       },
     });
@@ -350,10 +351,24 @@ export default function Home() {
       transport: http(),
     });
 
-    const isDeployed =
-      (await publicClient.getCode({
-        address: smartAccount.address,
-      })) !== "0x";
+    // console.log(smartAccount.address, orderBundleHash, packedSig);
+    //
+    // const isValidSig = await verifyHash(publicClient, {
+    //   address: smartAccount.address,
+    //   hash: orderBundleHash,
+    //   signature: packedSig,
+    // });
+    // console.log("isValidSig", isValidSig);
+    // if (!isValidSig) {
+    //   console.error("Invalid signature");
+    //   return;
+    // }
+
+    const code = await publicClient.getCode({
+      address: smartAccount.address,
+    });
+
+    const isDeployed = !!code && code !== "0x";
 
     await sendIntent({
       orderPath,

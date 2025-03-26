@@ -33,9 +33,9 @@ export const deployAccount = async ({
       data: account.initCode.factoryData,
       chainId: chain.id,
       type: "eip1559",
-      maxFeePerGas: parseGwei("20"),
-      maxPriorityFeePerGas: parseGwei("3"),
-      gas: 4100000n,
+      maxFeePerGas: parseGwei("0.01"),
+      maxPriorityFeePerGas: parseGwei("0.01"),
+      gas: 900000n,
       nonce,
     }),
   });
