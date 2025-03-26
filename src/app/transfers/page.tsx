@@ -1,70 +1,54 @@
 "use client";
 import { Button } from "@/components/Button";
-import { getCount, getIncrementCalldata } from "@/components/Counter";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import {
-  toSafeSmartAccount,
-  ToSafeSmartAccountReturnType,
-} from "permissionless/accounts";
-import {
-  Chain,
+  Address,
   createPublicClient,
+  encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
   erc20Abi,
+  getAddress,
   http,
-  Transport,
+  isAddress,
+  keccak256,
+  parseAbi,
+  slice,
   zeroAddress,
 } from "viem";
-import { Erc7579Actions } from "permissionless/actions/erc7579";
-import { createSmartAccountClient, SmartAccountClient } from "permissionless";
 import {
   createWebAuthnCredential,
-  entryPoint07Address,
-  getUserOperationHash,
   P256Credential,
 } from "viem/account-abstraction";
 import {
   RHINESTONE_ATTESTER_ADDRESS,
-  MOCK_ATTESTER_ADDRESS,
-  encodeValidatorNonce,
-  getAccount,
-  getWebauthnValidatorMockSignature,
   getWebAuthnValidator,
   WEBAUTHN_VALIDATOR_ADDRESS,
   getWebauthnValidatorSignature,
 } from "@rhinestone/module-sdk";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
-import { getAccountNonce } from "permissionless/actions";
 import { PublicKey } from "ox";
 import { sign } from "ox/WebAuthnP256";
-import { pimlicoClient } from "@/utils/clients";
-import { erc7579Actions } from "permissionless/actions/erc7579";
 import { Footer } from "@/components/Footer";
 import { getNonce } from "@/components/NonceManager";
-import { toAccount } from "viem/accounts";
 import {
-  BundleStatus,
-  getOrchestrator,
-  getOrderBundleHash,
+  getHookAddress,
+  getSameChainModuleAddress,
+  getTargetModuleAddress,
   getTokenAddress,
-  MetaIntent,
-  PostOrderBundleResult,
-  SignedMultiChainCompact,
 } from "@rhinestone/orchestrator-sdk";
-import { getBundle, sendIntent } from "@/components/orchestrator";
+import { SmartAccount } from "@/utils/types";
+import { deployAccount } from "@/utils/deployment";
+import { getBundle, sendIntent } from "@/utils/orchestrator";
 
-const appId = "webauthn";
+const appId = "omni-transfers";
 
 const sourceChain = baseSepolia;
 const targetChain = arbitrumSepolia;
 
 export default function Home() {
-  const [smartAccountClient, setSmartAccountClient] = useState<
-    SmartAccountClient<Transport, Chain, ToSafeSmartAccountReturnType<"0.7">> &
-      Erc7579Actions<ToSafeSmartAccountReturnType<"0.7">>
-  >();
+  const [smartAccount, setSmartAccount] = useState<SmartAccount | null>(null);
   const [credential, setCredential] = useState<P256Credential>(() =>
     JSON.parse(localStorage.getItem("credential") || "null"),
   );
@@ -81,7 +65,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const getBalance = async () => {
-    if (smartAccountClient) {
+    if (smartAccount) {
       const publicClient = createPublicClient({
         chain: sourceChain,
         transport: http(),
@@ -91,7 +75,7 @@ export default function Home() {
         address: getTokenAddress("USDC", sourceChain.id),
         abi: erc20Abi,
         functionName: "balanceOf",
-        args: [smartAccountClient.account.address],
+        args: [smartAccount.address],
       });
 
       setUsdcBalance(Number(balance) / 10 ** 6);
@@ -100,7 +84,7 @@ export default function Home() {
 
   useEffect(() => {
     getBalance();
-  }, [smartAccountClient]);
+  }, [smartAccount]);
 
   const createSafe = useCallback(async (_credential: P256Credential) => {
     const publicClient = createPublicClient({
@@ -114,64 +98,137 @@ export default function Home() {
       authenticatorId: _credential.id,
     });
 
-    const deadOwner = toAccount({
-      address: "0x000000000000000000000000000000000000dead",
-      async signMessage() {
-        return "0x";
-      },
-      async signTransaction() {
-        return "0x";
-      },
-      async signTypedData() {
-        return "0x";
-      },
+    const initializer = encodeFunctionData({
+      abi: parseAbi([
+        "function setup(address[] calldata _owners,uint256 _threshold,address to,bytes calldata data,address fallbackHandler,address paymentToken,uint256 payment, address paymentReceiver) external",
+      ]),
+      functionName: "setup",
+      args: [
+        ["0x000000000000000000000000000000000000dead"],
+        BigInt(1),
+        "0x7579011aB74c46090561ea277Ba79D510c6C00ff",
+        encodeFunctionData({
+          abi: parseAbi([
+            "struct ModuleInit {address module;bytes initData;}",
+            "function addSafe7579(address safe7579,ModuleInit[] calldata validators,ModuleInit[] calldata executors,ModuleInit[] calldata fallbacks, ModuleInit[] calldata hooks,address[] calldata attesters,uint8 threshold) external",
+          ]),
+          functionName: "addSafe7579",
+          args: [
+            "0x7579EE8307284F293B1927136486880611F20002",
+            [
+              {
+                module: webauthnValidator.address,
+                initData: webauthnValidator.initData,
+              },
+            ],
+            [
+              {
+                module: getSameChainModuleAddress(targetChain.id),
+                initData: "0x",
+              },
+              {
+                module: getTargetModuleAddress(targetChain.id),
+                initData: "0x",
+              },
+              {
+                module: getHookAddress(targetChain.id),
+                initData: "0x",
+              },
+            ],
+            [
+              {
+                module: getTargetModuleAddress(targetChain.id),
+                initData: encodeAbiParameters(
+                  [
+                    { name: "selector", type: "bytes4" },
+                    { name: "flags", type: "bytes1" },
+                    { name: "data", type: "bytes" },
+                  ],
+                  ["0x3a5be8cb", "0x00", "0x"],
+                ),
+              },
+            ],
+            [
+              {
+                module: getHookAddress(targetChain.id),
+                initData: encodeAbiParameters(
+                  [
+                    { name: "hookType", type: "uint256" },
+                    { name: "hookId", type: "bytes4" },
+                    { name: "data", type: "bytes" },
+                  ],
+                  [
+                    0n,
+                    "0x00000000",
+                    encodeAbiParameters(
+                      [{ name: "value", type: "bool" }],
+                      [true],
+                    ),
+                  ],
+                ),
+              },
+            ],
+            [
+              RHINESTONE_ATTESTER_ADDRESS, // Rhinestone Attester
+              "0x6D0515e8E499468DCe9583626f0cA15b887f9d03", // Mock attester for omni account
+            ],
+            1,
+          ],
+        }),
+        "0x7579EE8307284F293B1927136486880611F20002",
+        zeroAddress,
+        BigInt(0),
+        zeroAddress,
+      ],
     });
 
-    const safeAccount = await toSafeSmartAccount({
-      saltNonce: getNonce({
-        appId,
-      }),
-      client: publicClient,
-      owners: [deadOwner],
-      version: "1.4.1",
-      entryPoint: {
-        address: entryPoint07Address,
-        version: "0.7",
-      },
-      safe4337ModuleAddress: "0x7579EE8307284F293B1927136486880611F20002",
-      erc7579LaunchpadAddress: "0x7579011aB74c46090561ea277Ba79D510c6C00ff",
-      attesters: [
-        RHINESTONE_ATTESTER_ADDRESS, // Rhinestone Attester
-        MOCK_ATTESTER_ADDRESS, // Mock Attester - do not use in production
-      ],
-      attestersThreshold: 1,
-      validators: [
-        {
-          address: webauthnValidator.address,
-          context: webauthnValidator.initData,
-        },
+    const proxyFactory: Address = "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67";
+    const saltNonce = getNonce({
+      appId,
+    });
+    const factoryData = encodeFunctionData({
+      abi: parseAbi([
+        "function createProxyWithNonce(address singleton,bytes calldata initializer,uint256 saltNonce) external payable returns (address)",
+      ]),
+      functionName: "createProxyWithNonce",
+      args: [
+        "0x29fcb43b46531bca003ddc8fcb67ffe91900c762",
+        initializer,
+        saltNonce,
       ],
     });
-    const _smartAccountClient = createSmartAccountClient({
-      account: safeAccount,
-      paymaster: pimlicoClient,
-      chain: sourceChain,
-      userOperation: {
-        estimateFeesPerGas: async () =>
-          (await pimlicoClient.getUserOperationGasPrice()).fast,
-      },
-      bundlerTransport: http(
-        `https://api.pimlico.io/v2/${sourceChain.id}/rpc?apikey=${process.env.NEXT_PUBLIC_PIMLICO_API_KEY}`,
+
+    const salt = keccak256(
+      encodePacked(["bytes32", "uint256"], [keccak256(initializer), saltNonce]),
+    );
+    const hash = keccak256(
+      encodePacked(
+        ["bytes1", "address", "bytes32", "bytes32"],
+        [
+          "0xff",
+          proxyFactory,
+          salt,
+          "0xe298282cefe913ab5d282047161268a8222e4bd4ed106300c547894bbefd31ee",
+        ],
       ),
-    }).extend(erc7579Actions());
+    );
 
-    const isDeployed =
-      (await publicClient.getCode({
-        address: safeAccount.address,
-      })) !== "0x";
+    const accountAddress = getAddress(slice(hash, 12, 32));
+
+    const code = await publicClient.getCode({
+      address: accountAddress,
+    });
+
+    const isDeployed = !!code && code !== "0x";
     setIsAccountDeployed(isDeployed);
 
-    setSmartAccountClient(_smartAccountClient as any); // eslint-disable-line
+    setSmartAccount({
+      address: accountAddress,
+      initCode: {
+        factory: proxyFactory,
+        factoryData,
+      },
+    });
   }, []);
 
   const handleCreateCredential = useCallback(async () => {
@@ -195,7 +252,7 @@ export default function Home() {
   }, [createSafe, credential]);
 
   const handleDeployAccount = useCallback(async () => {
-    if (!smartAccountClient) {
+    if (!smartAccount) {
       console.error("No smart account client");
       return;
     } else if (!credential) {
@@ -210,70 +267,29 @@ export default function Home() {
 
     setDeployAccountLoading(true);
 
+    const deploymentTxHash = await deployAccount({
+      account: smartAccount,
+      chain: sourceChain,
+    });
+
+    console.log("Deployment tx hash", deploymentTxHash);
+
     const publicClient = createPublicClient({
       chain: sourceChain,
       transport: http(),
     });
 
-    const nonce = await getAccountNonce(publicClient, {
-      address: smartAccountClient.account.address,
-      entryPointAddress: entryPoint07Address,
-      key: encodeValidatorNonce({
-        account: getAccount({
-          address: smartAccountClient.account.address,
-          type: "safe",
-        }),
-        validator: WEBAUTHN_VALIDATOR_ADDRESS,
-      }),
+    await publicClient.waitForTransactionReceipt({
+      hash: deploymentTxHash,
     });
-
-    const userOperation = await smartAccountClient.prepareUserOperation({
-      account: smartAccountClient.account,
-      calls: [
-        {
-          to: zeroAddress,
-          data: "0x",
-        },
-      ],
-      nonce,
-      signature: getWebauthnValidatorMockSignature(),
-    });
-
-    const userOpHashToSign = getUserOperationHash({
-      chainId: sourceChain.id,
-      entryPointAddress: entryPoint07Address,
-      entryPointVersion: "0.7",
-      userOperation,
-    });
-
-    const { metadata: webauthn, signature } = await sign({
-      credentialId: credential.id,
-      challenge: userOpHashToSign,
-    });
-
-    const encodedSignature = getWebauthnValidatorSignature({
-      webauthn,
-      signature,
-      usePrecompiled: false,
-    });
-
-    userOperation.signature = encodedSignature;
-
-    const userOpHash =
-      await smartAccountClient.sendUserOperation(userOperation);
-
-    const receipt = await smartAccountClient.waitForUserOperationReceipt({
-      hash: userOpHash,
-    });
-    console.log("UserOp receipt: ", receipt);
 
     setDeployAccountLoading(false);
     setIsAccountDeployed(true);
-  }, [credential, smartAccountClient, isAccountDeployed]);
+  }, [credential, smartAccount, isAccountDeployed]);
 
   const handleTransfer = useCallback(async () => {
     setError(null);
-    if (!smartAccountClient) {
+    if (!smartAccount) {
       console.log("No smart account client");
       return;
     } else if (!credential) {
@@ -281,27 +297,35 @@ export default function Home() {
       return;
     }
 
-    // console.log(targetAddress, amount);
-    //
-    // if (!targetAddress || !amount) {
-    //   console.log(targetAddress, amount);
-    //   console.log("Please enter a target address and amount");
-    //   setError("Please enter a target address and amount");
-    //   return;
-    // } else if (Number(amount) > usdcBalance) {
-    //   setError("Insufficient balance");
-    //   return;
-    // }
+    console.log(targetAddress, amount);
+
+    if (!targetAddress || !amount) {
+      console.log(targetAddress, amount);
+      console.log("Please enter a target address and amount");
+      setError("Please enter a target address and amount");
+      return;
+    } else if (!isAddress(targetAddress, { strict: false })) {
+      setError("Invalid target address");
+      return;
+    } else if (Number(amount) > usdcBalance) {
+      setError("Insufficient balance");
+      return;
+    } else if (Number(amount) > 10 * 10 ** 6) {
+      setError("Amount must be less than 10 USDC");
+      return;
+    }
+
+    setTransferLoading(true);
 
     const { orderPath, orderBundleHash } = await getBundle({
       targetChain,
       account: {
-        address: smartAccountClient.account.address,
+        address: smartAccount.address,
         initCode: "0x",
       },
       transfer: {
-        amount: BigInt(1),
-        recipient: "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+        amount: BigInt(amount),
+        recipient: targetAddress,
       },
     });
 
@@ -321,12 +345,29 @@ export default function Home() {
       [WEBAUTHN_VALIDATOR_ADDRESS, encodedSignature],
     );
 
+    const publicClient = createPublicClient({
+      chain: targetChain,
+      transport: http(),
+    });
+
+    const isDeployed =
+      (await publicClient.getCode({
+        address: smartAccount.address,
+      })) !== "0x";
+
     await sendIntent({
       orderPath,
       signature: packedSig,
-      initCode: "0x",
+      initCode: isDeployed
+        ? "0x"
+        : encodePacked(
+            ["address", "bytes"],
+            [smartAccount.initCode.factory, smartAccount.initCode.factoryData],
+          ),
     });
-  }, [credential, smartAccountClient]);
+
+    setTransferLoading(false);
+  }, [credential, smartAccount, amount, targetAddress, usdcBalance]);
 
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
@@ -353,12 +394,10 @@ export default function Home() {
         </ol>
         <div className="font-[family-name:var(--font-geist-mono)] text-sm">
           <div>
-            {smartAccountClient && (
-              <>Smart account: {smartAccountClient.account.address}</>
-            )}
+            {smartAccount && <>Smart account: {smartAccount.address}</>}
           </div>
           <div>
-            {smartAccountClient && credential && (
+            {smartAccount && credential && (
               <>Balance on Base: {usdcBalance} USDC</>
             )}
           </div>
@@ -371,6 +410,7 @@ export default function Home() {
             placeholder="Target address"
             onChange={(e) => setTargetAddress(e.target.value)}
             value={targetAddress}
+            id="targetAddress"
           />
           <input
             className="bg-white rounded-2xl text-black px-4 py-1"
@@ -378,6 +418,7 @@ export default function Home() {
             onChange={(e) => setAmount(e.target.value)}
             value={amount}
             type="number"
+            id="amount"
           />
         </div>
 
@@ -385,11 +426,11 @@ export default function Home() {
           <Button
             buttonText="Create Credential"
             onClick={handleCreateCredential}
-            disabled={!!smartAccountClient}
+            disabled={!!smartAccount}
           />
           <Button
             buttonText="Deploy Account"
-            disabled={!smartAccountClient || isAccountDeployed}
+            disabled={!smartAccount || isAccountDeployed}
             onClick={handleDeployAccount}
             isLoading={deployAccountLoading}
           />
@@ -402,7 +443,7 @@ export default function Home() {
           />
         </div>
         {error && (
-          <div className="text-red-500 text-center flex-row items-center justify-center">
+          <div className="flex justify-center text-red-500 text-center w-full items-center">
             {error}
           </div>
         )}
