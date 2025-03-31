@@ -27,25 +27,25 @@ export const getBundle = async ({
   account,
   transfer,
 }: {
-  targetChain: Chain;
+  targetChain: number;
   account: { address: Address; initCode: Hex };
   transfer: { amount: bigint; recipient: Address };
 }) => {
   const tokenTransfers = [
     {
-      tokenAddress: getTokenAddress("USDC", targetChain.id),
+      tokenAddress: getTokenAddress("USDC", targetChain),
       amount: transfer.amount,
     },
   ];
 
   // create the meta intent
   const metaIntent: MetaIntent = {
-    targetChainId: targetChain.id,
+    targetChainId: targetChain,
     tokenTransfers: tokenTransfers,
     targetAccount: account.address,
     targetExecutions: [
       {
-        to: getTokenAddress("USDC", targetChain.id),
+        to: getTokenAddress("USDC", targetChain),
         value: 0n,
         data: encodeFunctionData({
           abi: erc20Abi,

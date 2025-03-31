@@ -27,7 +27,13 @@ import {
   WEBAUTHN_VALIDATOR_ADDRESS,
   getWebauthnValidatorSignature,
 } from "@rhinestone/module-sdk";
-import { arbitrum, arbitrumSepolia, base, baseSepolia } from "viem/chains";
+import {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
+  optimism,
+} from "viem/chains";
 import { PublicKey } from "ox";
 import { sign } from "ox/WebAuthnP256";
 import { Footer } from "@/components/Footer";
@@ -46,7 +52,7 @@ import { getBundle, getBundleStatus, sendIntent } from "@/utils/orchestrator";
 const appId = "omni-transfers";
 
 const sourceChain = base;
-const targetChain = arbitrum;
+const targetChains = [arbitrum, base, optimism];
 
 export default function Home() {
   const [smartAccount, setSmartAccount] = useState<SmartAccount | null>(null);
@@ -62,6 +68,7 @@ export default function Home() {
 
   const [targetAddress, setTargetAddress] = useState<string>("");
   const [amount, setAmount] = useState<string>("");
+  const [selectedNetwork, setSelectedNetwork] = useState(42161);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -130,21 +137,21 @@ export default function Home() {
             ],
             [
               {
-                module: getSameChainModuleAddress(targetChain.id),
+                module: getSameChainModuleAddress(sourceChain.id),
                 initData: "0x",
               },
               {
-                module: getTargetModuleAddress(targetChain.id),
+                module: getTargetModuleAddress(sourceChain.id),
                 initData: "0x",
               },
               {
-                module: getHookAddress(targetChain.id),
+                module: getHookAddress(sourceChain.id),
                 initData: "0x",
               },
             ],
             [
               {
-                module: getTargetModuleAddress(targetChain.id),
+                module: getTargetModuleAddress(sourceChain.id),
                 initData: encodeAbiParameters(
                   [
                     { name: "selector", type: "bytes4" },
@@ -157,7 +164,7 @@ export default function Home() {
             ],
             [
               {
-                module: getHookAddress(targetChain.id),
+                module: getHookAddress(sourceChain.id),
                 initData: encodeAbiParameters(
                   [
                     { name: "hookType", type: "uint256" },
@@ -321,7 +328,7 @@ export default function Home() {
     setTransferLoading(true);
 
     const { orderPath, orderBundleHash } = await getBundle({
-      targetChain,
+      targetChain: selectedNetwork,
       account: {
         address: smartAccount.address,
         initCode: "0x",
@@ -346,6 +353,10 @@ export default function Home() {
     const packedSig = encodePacked(
       ["address", "bytes"],
       [WEBAUTHN_VALIDATOR_ADDRESS, encodedSignature],
+    );
+
+    const targetChain = targetChains.find(
+      (chain) => chain.id === selectedNetwork,
     );
 
     const publicClient = createPublicClient({
@@ -411,7 +422,7 @@ export default function Home() {
           <li className="mb-2">
             Fund and deploy the account with USDC on Base.
           </li>
-          <li className="mb-2">Create an instant transfer on Arbitrum.</li>
+          <li className="mb-2">Create an instant transfer on any chain.</li>
         </ol>
         <div className="font-[family-name:var(--font-geist-mono)] text-sm">
           <div>
@@ -426,6 +437,19 @@ export default function Home() {
         </div>
 
         <div className="flex gap-4 justify-center items-center flex-col sm:flex-row">
+          <select
+            id="network-select"
+            value={selectedNetwork}
+            onChange={(e) => setSelectedNetwork(Number(e.target.value))}
+            className="block w-full px-4 py-1 bg-white text-black border border-gray-300 rounded-2xl"
+          >
+            {targetChains.map((chain) => (
+              <option key={chain.id} value={chain.id}>
+                {chain.name}
+              </option>
+            ))}
+          </select>
+
           <input
             className="bg-white rounded-2xl text-black px-4 py-1"
             placeholder="Target address"
@@ -457,7 +481,7 @@ export default function Home() {
           />
 
           <Button
-            buttonText="Send Transfer on Arb"
+            buttonText="Send Transfer"
             disabled={!isAccountDeployed}
             onClick={handleTransfer}
             isLoading={transferLoading}
