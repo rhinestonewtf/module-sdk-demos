@@ -26,10 +26,12 @@ export const getBundle = async ({
   targetChain,
   account,
   transfer,
+  weth,
 }: {
   targetChain: number;
   account: { address: Address; initCode: Hex };
   transfer: { amount: bigint; recipient: Address };
+  weth?: boolean;
 }) => {
   const tokenTransfers = [
     {
@@ -37,6 +39,13 @@ export const getBundle = async ({
       amount: transfer.amount,
     },
   ];
+
+  if (weth) {
+    tokenTransfers.push({
+      tokenAddress: getTokenAddress("WETH", targetChain),
+      amount: 1n,
+    });
+  }
 
   // create the meta intent
   const metaIntent: MetaIntent = {

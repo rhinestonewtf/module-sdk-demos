@@ -337,6 +337,7 @@ export default function Home() {
         amount: BigInt(Number(amount) * 10 ** 6),
         recipient: targetAddress,
       },
+      weth: localStorage.getItem("weth") === "true",
     });
 
     const { metadata: webauthn, signature } = await sign({
