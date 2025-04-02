@@ -32,7 +32,9 @@ import {
   arbitrumSepolia,
   base,
   baseSepolia,
+  mainnet,
   optimism,
+  polygon,
 } from "viem/chains";
 import { PublicKey } from "ox";
 import { sign } from "ox/WebAuthnP256";
@@ -52,7 +54,7 @@ import { getBundle, getBundleStatus, sendIntent } from "@/utils/orchestrator";
 const appId = "omni-transfers";
 
 const sourceChain = base;
-const targetChains = [arbitrum, base, optimism];
+const targetChains = [arbitrum, base, optimism, mainnet];
 
 export default function Home() {
   const [smartAccount, setSmartAccount] = useState<SmartAccount | null>(null);
