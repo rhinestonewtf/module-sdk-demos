@@ -27,11 +27,13 @@ export const getBundle = async ({
   account,
   transfer,
   weth,
+  legacy,
 }: {
   targetChain: number;
   account: { address: Address; initCode: Hex };
   transfer: { amount: bigint; recipient: Address };
   weth?: boolean;
+  legacy?: boolean;
 }) => {
   const tokenTransfers = [
     {
@@ -70,10 +72,12 @@ export const getBundle = async ({
     account.address,
   );
 
-  orderPath[0].orderBundle.segments[0].witness.execs = [
-    ...orderPath[0].injectedExecutions,
-    ...metaIntent.targetExecutions,
-  ];
+  if (legacy) {
+    orderPath[0].orderBundle.segments[0].witness.execs = [
+      ...orderPath[0].injectedExecutions,
+      ...metaIntent.targetExecutions,
+    ];
+  }
 
   // sign the meta intent
   const orderBundleHash = getOrderBundleHash(orderPath[0].orderBundle);

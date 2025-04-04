@@ -340,6 +340,7 @@ export default function Home() {
         recipient: targetAddress,
       },
       weth: localStorage.getItem("weth") === "true",
+      legacy: true,
     });
 
     const { metadata: webauthn, signature } = await sign({

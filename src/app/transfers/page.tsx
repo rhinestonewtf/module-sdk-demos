@@ -10,6 +10,7 @@ import {
   encodePacked,
   erc20Abi,
   getAddress,
+  Hex,
   http,
   isAddress,
   keccak256,
@@ -164,26 +165,7 @@ export default function Home() {
                 ),
               },
             ],
-            [
-              {
-                module: getHookAddress(sourceChain.id),
-                initData: encodeAbiParameters(
-                  [
-                    { name: "hookType", type: "uint256" },
-                    { name: "hookId", type: "bytes4" },
-                    { name: "data", type: "bytes" },
-                  ],
-                  [
-                    0n,
-                    "0x00000000",
-                    encodeAbiParameters(
-                      [{ name: "value", type: "bool" }],
-                      [true],
-                    ),
-                  ],
-                ),
-              },
-            ],
+            [],
             [
               RHINESTONE_ATTESTER_ADDRESS, // Rhinestone Attester
               "0x6D0515e8E499468DCe9583626f0cA15b887f9d03", // Mock attester for omni account
