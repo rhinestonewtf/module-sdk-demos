@@ -322,6 +322,7 @@ export default function Home() {
         recipient: targetAddress,
       },
       weth: localStorage.getItem("weth") === "true",
+      eth: localStorage.getItem("eth") === "true",
     });
 
     const { metadata: webauthn, signature } = await sign({

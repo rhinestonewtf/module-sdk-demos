@@ -27,12 +27,14 @@ export const getBundle = async ({
   account,
   transfer,
   weth,
+  eth,
   legacy,
 }: {
   targetChain: number;
   account: { address: Address; initCode: Hex };
   transfer: { amount: bigint; recipient: Address };
   weth?: boolean;
+  eth?: boolean;
   legacy?: boolean;
 }) => {
   const tokenTransfers = [
@@ -45,6 +47,13 @@ export const getBundle = async ({
   if (weth) {
     tokenTransfers.push({
       tokenAddress: getTokenAddress("WETH", targetChain),
+      amount: 1n,
+    });
+  }
+
+  if (eth) {
+    tokenTransfers.push({
+      tokenAddress: getTokenAddress("ETH", targetChain),
       amount: 1n,
     });
   }
