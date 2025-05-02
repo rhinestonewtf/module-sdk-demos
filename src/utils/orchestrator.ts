@@ -18,7 +18,7 @@ import {
   MultiChainCompact,
   PostOrderBundleResult,
   SignedMultiChainCompact,
-} from "@rhinestone/orchestrator-sdk";
+} from "@rhinestone/sdk/orchestrator";
 
 const orchestrator = getOrchestrator(process.env.ORCHESTRATOR_API_KEY!);
 

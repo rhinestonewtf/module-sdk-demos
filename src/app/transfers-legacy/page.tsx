@@ -46,7 +46,7 @@ import {
   getSameChainModuleAddress,
   getTargetModuleAddress,
   getTokenAddress,
-} from "@rhinestone/orchestrator-sdk";
+} from "@rhinestone/sdk/orchestrator";
 import { SmartAccount } from "@/utils/types";
 import { deployAccount } from "@/utils/deployment";
 import { getBundle, getBundleStatus, sendIntent } from "@/utils/orchestrator";
@@ -390,7 +390,7 @@ export default function Home() {
     let checks = 0;
     // check again every 2 seconds until the status changes
     // // @ts-ignore
-    while (bundleStatus.status === BundleStatus.PENDING) {
+    while (bundleStatus.status === 'PENDING') {
       if (checks > 20) {
         throw new Error("Bundle failed to execute");
       }
