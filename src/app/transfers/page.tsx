@@ -42,7 +42,7 @@ import { sign } from "ox/WebAuthnP256";
 import { Footer } from "@/components/Footer";
 import { getNonce } from "@/components/NonceManager";
 import {
-  type BundleStatus,
+  BUNDLE_STATUS_PENDING,
   getHookAddress,
   getSameChainModuleAddress,
   getTargetModuleAddress,
@@ -140,21 +140,21 @@ export default function Home() {
             ],
             [
               {
-                module: getSameChainModuleAddress(sourceChain.id),
+                module: getSameChainModuleAddress(),
                 initData: "0x",
               },
               {
-                module: getTargetModuleAddress(sourceChain.id),
+                module: getTargetModuleAddress(),
                 initData: "0x",
               },
               {
-                module: getHookAddress(sourceChain.id),
+                module: getHookAddress(),
                 initData: "0x",
               },
             ],
             [
               {
-                module: getTargetModuleAddress(sourceChain.id),
+                module: getTargetModuleAddress(),
                 initData: encodeAbiParameters(
                   [
                     { name: "selector", type: "bytes4" },
@@ -372,7 +372,7 @@ export default function Home() {
     let checks = 0;
     // check again every 2 seconds until the status changes
     // // @ts-ignore
-    while (bundleStatus.status === 'PENDING') {
+    while (bundleStatus.status === BUNDLE_STATUS_PENDING) {
       if (checks > 20) {
         throw new Error("Bundle failed to execute");
       }

@@ -139,21 +139,21 @@ export default function Home() {
             ],
             [
               {
-                module: getSameChainModuleAddress(sourceChain.id),
+                module: getSameChainModuleAddress(),
                 initData: "0x",
               },
               {
-                module: getTargetModuleAddress(sourceChain.id),
+                module: getTargetModuleAddress(),
                 initData: "0x",
               },
               {
-                module: getHookAddress(sourceChain.id),
+                module: getHookAddress(),
                 initData: "0x",
               },
             ],
             [
               {
-                module: getTargetModuleAddress(sourceChain.id),
+                module: getTargetModuleAddress(),
                 initData: encodeAbiParameters(
                   [
                     { name: "selector", type: "bytes4" },
@@ -166,7 +166,7 @@ export default function Home() {
             ],
             [
               {
-                module: getHookAddress(sourceChain.id),
+                module: getHookAddress(),
                 initData: encodeAbiParameters(
                   [
                     { name: "hookType", type: "uint256" },
