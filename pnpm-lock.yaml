@@ -12,8 +12,8 @@ importers:
         specifier: ^0.2.8
         version: 0.2.8(viem@2.28.3(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10))
       '@rhinestone/sdk':
-        specifier: ^0.5.1
-        version: 0.5.1(viem@2.28.3(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10))
+        specifier: ^0.5.2
+        version: 0.5.2(viem@2.28.3(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10))
       '@tanstack/react-query':
         specifier: ^5.63.0
         version: 5.63.0(react@19.0.0)
@@ -513,8 +513,8 @@ packages:
     peerDependencies:
       viem: ^2.0.0
 
-  '@rhinestone/sdk@0.5.1':
-    resolution: {integrity: sha512-/+Bv0vysL6bIXHx6fOdFWJ7QWNdNnjnttjAwklEx/4eDlBpxl/rl4lEZy8T7PyCVimhitYPajRzFc1WJ+gMfoQ==}
+  '@rhinestone/sdk@0.5.2':
+    resolution: {integrity: sha512-lQzM90wBW9KLpFfOb5aSLIHr17fUKaakk4vMZ5AG0ZfzQViPz75+TivAiQzGna2Us8Bqym4NWTc/MSUHum/y6Q==}
     peerDependencies:
       viem: ^2.28.0
 
@@ -3357,7 +3357,7 @@ snapshots:
       tslib: 2.8.1
       viem: 2.28.3(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10)
 
-  '@rhinestone/sdk@0.5.1(viem@2.28.3(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10))':
+  '@rhinestone/sdk@0.5.2(viem@2.28.3(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10))':
     dependencies:
       axios: 1.9.0
       viem: 2.28.3(bufferutil@4.0.9)(typescript@5.7.3)(utf-8-validate@5.0.10)
@@ -6208,8 +6208,8 @@ snapshots:
 
   webauthn-p256@0.0.10:
     dependencies:
-      '@noble/curves': 1.8.0
-      '@noble/hashes': 1.7.0
+      '@noble/curves': 1.8.2
+      '@noble/hashes': 1.7.2
 
   webextension-polyfill@0.10.0: {}
 
