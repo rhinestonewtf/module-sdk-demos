@@ -21,6 +21,7 @@ import {
   Transport,
   zeroAddress,
 } from "viem";
+import { signAuthorization } from 'viem/actions'
 import { Erc7579Actions } from "permissionless/actions/erc7579";
 import { createSmartAccountClient, SmartAccountClient } from "permissionless";
 import {
@@ -48,7 +49,6 @@ import { getAccountNonce } from "permissionless/actions";
 import { erc7579Actions } from "permissionless/actions/erc7579";
 import { Footer } from "@/components/Footer";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { signAuthorization } from "viem/experimental";
 import { writeContract } from "viem/actions";
 import { createPimlicoClient } from "permissionless/clients/pimlico";
 
@@ -160,7 +160,7 @@ export default function Home() {
     const authorization = await signAuthorization(publicClient, {
       account: account,
       contractAddress: "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
-      delegate: sponsorAccount,
+      executor: sponsorAccount,
     });
 
     const txHash = await writeContract(publicClient, {
