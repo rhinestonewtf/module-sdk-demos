@@ -41,7 +41,7 @@ import {
 } from '@rhinestone/module-sdk';
 
 // Axiom Keystore constants
-const AXIOM_KEYSTORE_RPC_URL = 'https://keystore-rpc.axiom.xyz/v1'; // Update this to the actual URL if different
+const AXIOM_KEYSTORE_RPC_URL = 'https://keystore-rpc.axiom.xyz/v1';
 const AXIOM_KEYSTORE_ROLLUP = '0x6C8364763d7Be106a9a9F86d9cC8990A2222ae38';
 const KEYSTORE_VALIDATOR_ADDRESS = '0x1234567890123456789012345678901234567890' as `0x${string}`; // Replace with actual address from the SDK
 
