@@ -5,30 +5,22 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   Address,
   createPublicClient,
-  createWalletClient,
   http,
   isAddress,
   getAddress,
-  Transport,
-  Chain,
   encodeAbiParameters,
   Hex,
-  toBytes,
-  toHex,
   keccak256,
   concat,
   formatEther,
 } from 'viem';
-import { optimismSepolia, baseSepolia } from 'viem/chains';
+import { baseSepolia } from 'viem/chains';
 import { getNonce } from '@/components/NonceManager';
-import { deployAccount } from '@/utils/deployment';
-import { sendIntent } from '@/utils/orchestrator';
 import { toAccount, generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { createSmartAccountClient, SmartAccountClient } from 'permissionless';
-import { toSafeSmartAccount, ToSafeSmartAccountReturnType } from 'permissionless/accounts';
+import { createSmartAccountClient } from 'permissionless';
+import { toSafeSmartAccount } from 'permissionless/accounts';
 import { entryPoint07Address, getUserOperationHash } from 'viem/account-abstraction';
 import { erc7579Actions } from 'permissionless/actions/erc7579';
-import { Erc7579Actions } from 'permissionless/actions/erc7579';
 import { pimlicoClient, pimlicoBaseSepoliaUrl } from '@/utils/clients';
 import { getAccountNonce } from 'permissionless/actions';
 import Image from 'next/image';
@@ -40,16 +32,13 @@ import {
   RHINESTONE_ATTESTER_ADDRESS,
   MOCK_ATTESTER_ADDRESS,
   getAccount,
-  OWNABLE_VALIDATOR_ADDRESS,
   encodeValidationData,
   encodeValidatorNonce,
 } from '@rhinestone/module-sdk';
 
 // Axiom Keystore constants
-const AXIOM_KEYSTORE_API_PROXY = '/api/axiom-keystore'; // Our API proxy endpoint
-const AXIOM_KEYSTORE_ROLLUP = '0xd7304aA4F048B07f75347b84746211C196Fc2bEa';
+const AXIOM_KEYSTORE_API_PROXY = '/api/axiom-keystore';
 const KEYSTORE_VALIDATOR_ADDRESS = '0xcADf57c6343bAbe02E9C975BBaAeCa624a4e2f07' as `0x${string}`;
-const AXIOM_KEYSTORE_CACHE = '0x51886f20EAC4347a5978A5590eBb065Ce5830bB1';
 
 // Define our own keystoreValidator function since it might not be exported from the SDK yet
 const getKeystoreValidator = ({
@@ -78,10 +67,8 @@ const getKeystoreValidator = ({
 // Define constants for the Axiom Keystore
 const OWNABLE_CODE_HASH = '0xd9ad90a204447aec1a1528d764e1d80212c8011dc0125b3995875e58ec9a43bf' as `0x${string}`;
 const VKEY_HASH = '0xafc6c9447c95010572d8479b90db27c53534a65555825f324cb0530152b169a4' as `0x${string}`;
-// SALT will be randomly generated when creating a keystore
 
 const appId = 'keystore-validator';
-const chainId = baseSepolia.id;
 
 // Helper function to call Axiom Keystore RPC via our proxy API
 async function callAxiomKeystoreRPC(method: string, params: Record<string, unknown>) {
@@ -139,6 +126,18 @@ interface KeystoreProofResponse {
   proof: KeystoreProof;
 }
 
+// Type for the Keystore proof data used by the validator
+interface KeystoreProofData {
+  isExclusion: boolean;
+  exclusionExtraData: `0x${string}`;
+  nextDummyByte: `0x${string}`;
+  nextImtKey: `0x${string}`;
+  vkeyHash: `0x${string}`;
+  keyData: `0x${string}`;
+  proof: `0x${string}`[];
+  isLeft: bigint;
+}
+
 // Function to get proof data
 async function getAxiomProof(
   keystoreAddress: `0x${string}`,
@@ -161,7 +160,7 @@ async function getAxiomProof(
       address: keystoreAddress,
     });
 
-    // Check if we have a valid response - the structure might be slightly different with direct RPC
+    // Check if we have a valid response
     if (proofData && proofData.state && proofData.proof) {
       // Extract data from the response
       const { state, proof } = proofData;
@@ -322,17 +321,18 @@ export default function KeystoreDemo() {
 
   // Fixed default invalidation time (7 days in seconds)
   const invalidationTime = BigInt(3600 * 24 * 7);
-  const [proof, setProof] = useState<string | `0x${string}`>('0x');
+  const [proof, setProof] = useState<KeystoreProofData | null>(null);
 
   const [transferLoading, setTransferLoading] = useState(false);
   const [deployAccountLoading, setDeployAccountLoading] = useState(false);
   const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   const [targetAddress, setTargetAddress] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
 
   const [error, setError] = useState<string | null>(null);
-  const [transactionStatus, setTransactionStatus] = useState<string | null>(null);
+  const [transactionStatus, setTransactionStatus] = useState<React.ReactNode | null>(null);
 
   // Load owner from localStorage on component mount
   useEffect(() => {
@@ -349,6 +349,7 @@ export default function KeystoreDemo() {
   // Get token balance
   const getBalance = async () => {
     if (smartAccountClient) {
+      setBalanceLoading(true);
       const publicClient = createPublicClient({
         chain: baseSepolia,
         transport: http(),
@@ -360,12 +361,22 @@ export default function KeystoreDemo() {
         });
 
         // Convert bigint to number properly
-        setTokenBalance(Number(balance / 10n ** 18n));
+        setTokenBalance(Number(formatEther(balance)));
       } catch (err) {
         console.error('Failed to fetch balance:', err);
+      } finally {
+        setBalanceLoading(false);
       }
     }
   };
+
+  // Remove the interval-based refresh effect
+  // Refresh balance every 30 seconds
+  useEffect(() => {
+    if (smartAccountClient) {
+      getBalance();
+    }
+  }, [smartAccountClient]);
 
   useEffect(() => {
     if (keystoreAddress !== '0x' && keyData !== '0x' && !smartAccountClient) {
@@ -469,7 +480,6 @@ export default function KeystoreDemo() {
 
       const _smartAccountClient = createSmartAccountClient({
         account: safeAccount,
-        paymaster: pimlicoClient,
         chain: baseSepolia,
         userOperation: {
           estimateFeesPerGas: async () => (await pimlicoClient.getUserOperationGasPrice()).fast,
@@ -600,10 +610,6 @@ export default function KeystoreDemo() {
       });
       console.log('Nonce:', nonce);
 
-      // Create a properly formatted mock signature for the initial userOp preparation
-      const mockKeystoreSignature = getKeystoreValidatorMockSignature(keystoreAddress, keyData, salt);
-      console.log('Created mock signature in correct format for preparation:', mockKeystoreSignature);
-
       // Prepare the user operation with the specific nonce
       console.log('Preparing user operation with proper nonce...');
       const userOperation = await smartAccountClient.prepareUserOperation({
@@ -615,6 +621,7 @@ export default function KeystoreDemo() {
             value: 0n,
           },
         ],
+        preVerificationGas: 100000n, // TODO: Remove hardcoded value
       });
 
       console.log('User operation prepared successfully');
@@ -679,7 +686,7 @@ export default function KeystoreDemo() {
       userOperation.nonce = nonce;
       setTransactionStatus('Sending user operation for deployment...');
 
-      // CHeck if the sender has enough funds
+      // Check if the sender has enough funds
       const requiredPrefund = getRequiredPrefund({
         userOperation,
         entryPointVersion: '0.7',
@@ -711,7 +718,19 @@ export default function KeystoreDemo() {
 
       console.log('Receipt received:', receipt);
       setIsAccountDeployed(true);
-      setTransactionStatus('Account deployed successfully on Base Sepolia');
+      setTransactionStatus(
+        <span>
+          Account deployed successfully on Base Sepolia{' '}
+          <a
+            href={`https://sepolia.basescan.org/tx/${receipt.receipt.transactionHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-500 underline"
+          >
+            View on BaseScan
+          </a>
+        </span>
+      );
 
       setDeployAccountLoading(false);
     } catch (err) {
@@ -734,7 +753,7 @@ export default function KeystoreDemo() {
       const proofData = await getAxiomProof(keystoreAddress, salt);
 
       // Create a proof object as would be used in the validator's signature
-      const keystoreProof = {
+      const keystoreProof: KeystoreProofData = {
         isExclusion: proofData.isExclusion,
         exclusionExtraData: proofData.exclusionExtraData,
         nextDummyByte: proofData.nextDummyByte,
@@ -745,11 +764,15 @@ export default function KeystoreDemo() {
         isLeft: proofData.isLeft,
       };
 
-      // Store the serialized proof for use in transactions
-      const serializedProof = JSON.stringify(keystoreProof);
-      setProof(serializedProof);
+      console.log('Keystore proof:', keystoreProof);
+
+      // Store the proof object directly
+      setProof(keystoreProof);
 
       setTransactionStatus('Proof generated successfully from Axiom');
+
+      // Refresh balance after generating proof
+      getBalance();
     } catch (err) {
       setError(`Failed to generate proof: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -757,25 +780,14 @@ export default function KeystoreDemo() {
 
   // Execute transaction with proof on Base Sepolia
   const handleTransfer = useCallback(async () => {
-    if (
-      !smartAccountClient ||
-      proof === '0x' ||
-      !isAddress(targetAddress) ||
-      !amount ||
-      !parseFloat(amount) ||
-      !owner
-    ) {
+    if (!smartAccountClient || !proof || !isAddress(targetAddress) || !amount || !parseFloat(amount) || !owner) {
       setError('Missing required information for transfer or owner not set');
       return;
     }
 
+    setTransferLoading(true);
+    setTransactionStatus('Preparing transaction with Axiom proof...');
     try {
-      setTransferLoading(true);
-      setTransactionStatus('Preparing transaction with Axiom proof...');
-
-      // Parse the proof data
-      const keystoreProof = JSON.parse(proof);
-
       // Create the transaction with the proof
       const transferAmount = BigInt(parseFloat(amount) * 10 ** 18);
 
@@ -784,6 +796,8 @@ export default function KeystoreDemo() {
         chain: baseSepolia,
         transport: http(),
       });
+
+      console.log('Getting validator-specific nonce...');
 
       const nonce = await getAccountNonce(publicClient, {
         address: smartAccountClient.account.address,
@@ -797,6 +811,8 @@ export default function KeystoreDemo() {
         }),
       });
 
+      console.log('Nonce:', nonce);
+
       // Prepare user operation for the transfer
       const userOperation = await smartAccountClient.prepareUserOperation({
         account: smartAccountClient.account,
@@ -807,25 +823,28 @@ export default function KeystoreDemo() {
             value: transferAmount,
           },
         ],
-        nonce,
+        preVerificationGas: 100000n, // TODO: Remove hardcoded value
+        verificationGasLimit: 100000n, // TODO: Remove hardcoded value
       });
 
+      console.log('User operation prepared successfully');
+
       // Get the hash that needs to be signed by the owner's private key
-      const userOpHash = getUserOperationHash({
+      const userOpHashToSign = getUserOperationHash({
         chainId: baseSepolia.id,
         entryPointAddress: entryPoint07Address,
         entryPointVersion: '0.7',
         userOperation,
       });
 
-      console.log('UserOp hash to sign:', userOpHash);
+      console.log('UserOp hash to sign:', userOpHashToSign);
 
       // Sign the userOpHash with the owner's private key
       // This is what would happen in a real scenario - the hash is signed by the key
       // represented in the Axiom keystore
       const ownerAccount = privateKeyToAccount(owner.privateKey);
       const userOpSig = await ownerAccount.signMessage({
-        message: { raw: userOpHash },
+        message: { raw: userOpHashToSign },
       });
 
       console.log('Signature from owner key:', userOpSig);
@@ -849,43 +868,79 @@ export default function KeystoreDemo() {
           },
           { type: 'bytes' },
         ],
-        [keystoreProof, userOpSig]
+        [proof, userOpSig]
       );
 
-      // Update the signature in the user operation
+      // Update the signature and nonce
       userOperation.signature = combinedSignature;
+      userOperation.nonce = nonce;
 
       setTransactionStatus('Sending transaction with Axiom proof...');
 
-      // Send the user operation
-      try {
-        const userOpHash = await smartAccountClient.sendUserOperation(userOperation);
-        console.log('UserOp hash:', userOpHash);
+      // Check if the sender has enough funds
+      const requiredPrefund = getRequiredPrefund({
+        userOperation,
+        entryPointVersion: '0.7',
+      });
 
-        setTransactionStatus('Waiting for transaction receipt...');
+      const senderBalance = await publicClient.getBalance({
+        address: userOperation.sender,
+      });
 
-        const receipt = await smartAccountClient.waitForUserOperationReceipt({
-          hash: userOpHash,
-        });
-
-        console.log('Receipt received:', receipt);
-        setTransactionStatus(`Transaction successful! Hash: ${receipt.receipt.transactionHash}`);
-
-        // Refresh balance after transfer
-        setTimeout(() => {
-          getBalance();
-        }, 3000);
-      } catch (err) {
-        console.error('UserOp error:', err);
-        setError(`Transaction failed: ${err instanceof Error ? err.message : String(err)}`);
+      if (senderBalance < requiredPrefund) {
+        console.log('Sender balance:', formatEther(senderBalance), 'ETH');
+        console.log('Required prefund:', formatEther(requiredPrefund), 'ETH');
+        console.log('Sender address:', userOperation.sender);
+        throw new Error(
+          `Account address does not have enough native tokens, required: ${formatEther(requiredPrefund)} ETH`
+        );
       }
 
-      setTransferLoading(false);
+      // Send the user operation
+      const userOpHash = await smartAccountClient.sendUserOperation(userOperation);
+      console.log('UserOp hash:', userOpHash);
+
+      setTransactionStatus('Waiting for transaction receipt...');
+
+      const receipt = await smartAccountClient.waitForUserOperationReceipt({
+        hash: userOpHash,
+      });
+
+      console.log('Receipt received:', receipt);
+      setTransactionStatus(
+        <span>
+          Transaction successful!{' '}
+          <a
+            href={`https://sepolia.basescan.org/tx/${receipt.receipt.transactionHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-500 underline"
+          >
+            View on BaseScan
+          </a>
+        </span>
+      );
+
+      // Refresh balance after transfer
+      setTimeout(() => {
+        getBalance();
+      }, 3000);
     } catch (err) {
-      setTransferLoading(false);
-      setError(`Transfer failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.error('UserOp error:', err);
+      setError(`Transaction failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+
+    setTransferLoading(false);
   }, [smartAccountClient, proof, targetAddress, amount, keystoreAddress, keyData, salt]);
+
+  // After transaction completes, refresh balance
+  useEffect(() => {
+    // Check if transaction was successful by converting to string and checking content
+    const statusText = String(transactionStatus || '');
+    if (statusText.includes('Transaction successful!')) {
+      getBalance();
+    }
+  }, [transactionStatus]);
 
   const clearStatus = () => {
     setTransactionStatus(null);
@@ -906,7 +961,8 @@ export default function KeystoreDemo() {
             Prepare userOp to deploy a smart account with the Keystore Validator on Base Sepolia.
           </li>
           <li className="mb-2">Fetch proof from the Axiom Rollup.</li>
-          <li className="mb-2">Execute userOp using axiom rollup proof.</li>
+          <li className="mb-2">Execute userOp using Axiom rollup proof.</li>
+          <li className="mb-2">Repeat steps 3 and 4 for any new transaction.</li>
         </ol>
 
         <div className="font-[family-name:var(--font-geist-mono)] text-sm break-all">
@@ -919,6 +975,7 @@ export default function KeystoreDemo() {
               <div className="mb-2">Safe7579 Address: {smartAccountClient.account.address}</div>
               <div className="mb-2">Account deployed: {isAccountDeployed ? 'Yes' : 'No'}</div>
               <div className="mb-2">Chain ID: {baseSepolia.id}</div>
+              {proof && <div className="mb-2">Proof: Loaded from Axiom</div>}
             </>
           )}
         </div>
@@ -945,11 +1002,11 @@ export default function KeystoreDemo() {
               />
             )}
 
-            {isAccountDeployed && proof === '0x' && (
-              <Button onClick={handleGenerateProof} buttonText="Generate Proof from Axiom" />
+            {isAccountDeployed && !proof && (
+              <Button onClick={handleGenerateProof} buttonText="Generate Proof from Axiom for new Transaction" />
             )}
 
-            {isAccountDeployed && proof !== '0x' && (
+            {isAccountDeployed && proof && (
               <div className="flex flex-col gap-4 w-full max-w-md">
                 <div>
                   <label className="block text-sm mb-2 font-[family-name:var(--font-geist-mono)]">
@@ -959,26 +1016,64 @@ export default function KeystoreDemo() {
                     type="text"
                     value={targetAddress}
                     onChange={(e) => setTargetAddress(e.target.value)}
-                    className="w-full p-2 border rounded font-[family-name:var(--font-geist-mono)]"
+                    className="w-full p-2 border rounded font-[family-name:var(--font-geist-mono)] bg-white text-black dark:bg-gray-800 dark:text-white"
                     placeholder="0x..."
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-2 font-[family-name:var(--font-geist-mono)]">Amount:</label>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-[family-name:var(--font-geist-mono)]">Amount:</label>
+                    <div className="text-sm font-[family-name:var(--font-geist-mono)] flex items-center">
+                      Balance:{' '}
+                      {balanceLoading ? (
+                        <span className="inline-block ml-1 animate-pulse">Loading...</span>
+                      ) : (
+                        <span className="inline-block ml-1">{tokenBalance.toFixed(4)} ETH</span>
+                      )}
+                      <button
+                        onClick={getBalance}
+                        className="ml-2 p-1 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded"
+                        title="Refresh balance"
+                      >
+                        🔄
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Set max amount, keeping 0.01 ETH for gas
+                          const maxAmount = Math.max(0, tokenBalance - 0.01);
+                          setAmount(maxAmount > 0 ? maxAmount.toString() : '0');
+                        }}
+                        className="ml-2 px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded"
+                        disabled={balanceLoading || tokenBalance <= 0}
+                      >
+                        Send Max
+                      </button>
+                    </div>
+                  </div>
                   <input
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-full p-2 border rounded font-[family-name:var(--font-geist-mono)]"
+                    className="w-full p-2 border rounded font-[family-name:var(--font-geist-mono)] bg-white text-black dark:bg-gray-800 dark:text-white"
                     placeholder="0.0"
                     min="0"
-                    step="0.01"
+                    step="0.001"
+                    max={tokenBalance.toString()}
                   />
+                  {parseFloat(amount) > tokenBalance && (
+                    <p className="text-red-500 text-sm mt-1">Amount exceeds balance</p>
+                  )}
                 </div>
                 <Button
                   onClick={handleTransfer}
                   isLoading={transferLoading}
-                  disabled={proof === '0x' || !targetAddress || !amount}
+                  disabled={
+                    !targetAddress ||
+                    !amount ||
+                    parseFloat(amount) <= 0 ||
+                    parseFloat(amount) > tokenBalance ||
+                    balanceLoading
+                  }
                   buttonText="Execute Transaction on Base Sepolia"
                 />
               </div>
