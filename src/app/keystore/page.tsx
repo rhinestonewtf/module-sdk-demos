@@ -17,6 +17,7 @@ import {
   toHex,
   keccak256,
   concat,
+  formatEther,
 } from 'viem';
 import { optimismSepolia, baseSepolia } from 'viem/chains';
 import { getNonce } from '@/components/NonceManager';
@@ -46,9 +47,9 @@ import {
 
 // Axiom Keystore constants
 const AXIOM_KEYSTORE_API_PROXY = '/api/axiom-keystore'; // Our API proxy endpoint
-const AXIOM_KEYSTORE_ROLLUP = '0x6C8364763d7Be106a9a9F86d9cC8990A2222ae38';
-const KEYSTORE_VALIDATOR_ADDRESS = '0xc5ceE231A46e65631Ba2905DE9d47b75A91e836A' as `0x${string}`;
-const AXIOM_KEYSTORE_CACHE = '0xbE8877ab2B97e8Ca4A2d0Ae9B10ed12cC9646190';
+const AXIOM_KEYSTORE_ROLLUP = '0xd7304aA4F048B07f75347b84746211C196Fc2bEa';
+const KEYSTORE_VALIDATOR_ADDRESS = '0xcADf57c6343bAbe02E9C975BBaAeCa624a4e2f07' as `0x${string}`;
+const AXIOM_KEYSTORE_CACHE = '0x51886f20EAC4347a5978A5590eBb065Ce5830bB1';
 
 // Define our own keystoreValidator function since it might not be exported from the SDK yet
 const getKeystoreValidator = ({
@@ -160,8 +161,6 @@ async function getAxiomProof(
       address: keystoreAddress,
     });
 
-    console.log('Proof response from Axiom:', proofData);
-
     // Check if we have a valid response - the structure might be slightly different with direct RPC
     if (proofData && proofData.state && proofData.proof) {
       // Extract data from the response
@@ -191,8 +190,6 @@ async function getAxiomProof(
 
       // Construct exclusionExtraData
       const exclusionExtraData = concat([leaf.keyPrefix, leaf.key, userSalt, valueHash]) as `0x${string}`;
-
-      console.log('Successfully processed proof data');
 
       return {
         isExclusion: proof.isExclusionProof,
@@ -693,10 +690,12 @@ export default function KeystoreDemo() {
       });
 
       if (senderBalance < requiredPrefund) {
-        console.log('Sender balance:', senderBalance);
-        console.log('Required prefund:', requiredPrefund);
+        console.log('Sender balance:', formatEther(senderBalance), 'ETH');
+        console.log('Required prefund:', formatEther(requiredPrefund), 'ETH');
         console.log('Sender address:', userOperation.sender);
-        throw new Error(`Sender address does not have enough native tokens`);
+        throw new Error(
+          `Account address does not have enough native tokens, required: ${formatEther(requiredPrefund)} ETH`
+        );
       }
 
       // Send the user operation with the proper signature
@@ -902,10 +901,12 @@ export default function KeystoreDemo() {
         </div>
 
         <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">Create a keystore account on Axiom&apos;s rollup.</li>
-          <li className="mb-2">Deploy a smart account with the keystore validator on Base Sepolia.</li>
-          <li className="mb-2">Generate ZK proof for transaction validation.</li>
-          <li className="mb-2">Execute transaction with ZK proof authentication on Base Sepolia.</li>
+          <li className="mb-2"> Counterfactually create a keystore account on Axiom&apos;s rollup.</li>
+          <li className="mb-2">
+            Prepare userOp to deploy a smart account with the Keystore Validator on Base Sepolia.
+          </li>
+          <li className="mb-2">Fetch proof from the Axiom Rollup.</li>
+          <li className="mb-2">Execute userOp using axiom rollup proof.</li>
         </ol>
 
         <div className="font-[family-name:var(--font-geist-mono)] text-sm break-all">
