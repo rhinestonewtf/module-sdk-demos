@@ -13,6 +13,7 @@ import {
   keccak256,
   concat,
   formatEther,
+  zeroHash,
 } from 'viem';
 import { baseSepolia } from 'viem/chains';
 import { getNonce } from '@/components/NonceManager';
@@ -26,6 +27,7 @@ import { getAccountNonce } from 'permissionless/actions';
 import Image from 'next/image';
 import React from 'react';
 import { getRequiredPrefund } from 'permissionless';
+import { KeystoreSibling, KeystoreLeaf, KeystoreProof, KeystoreProofResponse, KeystoreProofData } from './types';
 
 // Keystore-specific imports
 import {
@@ -70,95 +72,36 @@ const VKEY_HASH = '0xafc6c9447c95010572d8479b90db27c53534a65555825f324cb0530152b
 
 const appId = 'keystore-validator';
 
-// Helper function to call Axiom Keystore RPC via our proxy API
-async function callAxiomKeystoreRPC(method: string, params: Record<string, unknown>) {
-  const response = await fetch(AXIOM_KEYSTORE_API_PROXY, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method,
-      params,
-    }),
-  });
+// Helper function to call Axiom Keystore API via our proxy API
+async function callAxiomKeystoreAPI(address: `0x${string}`) {
+  try {
+    // Use the new GET endpoint with query parameters
+    const response = await fetch(`${AXIOM_KEYSTORE_API_PROXY}?address=${address}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(`Axiom Keystore RPC Error: ${data.error.message}`);
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(`Axiom Keystore API Error: ${data.error}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error calling Axiom Keystore API:', error);
+    throw error;
   }
-
-  return data.result;
-}
-
-// Types for the Axiom Keystore response
-interface KeystoreSibling {
-  hash: `0x${string}`;
-  isLeft: boolean;
-}
-
-interface KeystoreLeaf {
-  hash: `0x${string}`;
-  keyPrefix: `0x${string}`;
-  key: `0x${string}`;
-  nextKeyPrefix: `0x${string}`;
-  nextKey: `0x${string}`;
-  value: `0x${string}`;
-}
-
-interface KeystoreProof {
-  isExclusionProof: boolean;
-  siblings: KeystoreSibling[];
-  leaf: KeystoreLeaf;
-}
-
-interface KeystoreState {
-  dataHash: `0x${string}`;
-  vkeyHash: `0x${string}`;
-  data: `0x${string}`;
-  vkey: `0x${string}`;
-}
-
-interface KeystoreProofResponse {
-  state: KeystoreState;
-  proof: KeystoreProof;
-}
-
-// Type for the Keystore proof data used by the validator
-interface KeystoreProofData {
-  isExclusion: boolean;
-  exclusionExtraData: `0x${string}`;
-  nextDummyByte: `0x${string}`;
-  nextImtKey: `0x${string}`;
-  vkeyHash: `0x${string}`;
-  keyData: `0x${string}`;
-  proof: `0x${string}`[];
-  isLeft: bigint;
 }
 
 // Function to get proof data
-async function getAxiomProof(
-  keystoreAddress: `0x${string}`,
-  userSalt: `0x${string}`
-): Promise<{
-  proof: `0x${string}`[];
-  isLeft: bigint;
-  exclusionExtraData: `0x${string}`;
-  nextDummyByte: `0x${string}`;
-  nextImtKey: `0x${string}`;
-  vkeyHash: `0x${string}`;
-  keyData: `0x${string}`;
-  isExclusion: boolean;
-}> {
+async function getAxiomProof(keystoreAddress: `0x${string}`, userSalt: `0x${string}`): Promise<KeystoreProofData> {
   try {
     console.log('Getting proof for keystore address:', keystoreAddress);
 
-    // Get proof using our proxy API - this will now use the direct RPC call
-    const proofData = await callAxiomKeystoreRPC('axiom_getProof', {
-      address: keystoreAddress,
-    });
+    // Get proof using our proxy API with the new REST endpoint
+    const proofData = await callAxiomKeystoreAPI(keystoreAddress);
 
     // Check if we have a valid response
     if (proofData && proofData.state && proofData.proof) {
@@ -202,26 +145,8 @@ async function getAxiomProof(
       };
     }
 
-    // If something went wrong with parsing or the response is invalid, log and fall back to mock data
-    console.warn('Could not parse Axiom response correctly, falling back to mock data');
-
-    // Fallback to mock data if needed
-    return {
-      isExclusion: true,
-      exclusionExtraData: '0x0102856813f6b9bd77bea28521b0277bf2867e1a2358953d912fede9820369a9e5' as `0x${string}`,
-      nextDummyByte: '0x01' as `0x${string}`,
-      nextImtKey: '0x078fd8980f317673830cdb6a2498d109c98b6fdc1ca9f4f773eb6aeedb66ac49' as `0x${string}`,
-      vkeyHash: VKEY_HASH,
-      keyData: '0x' as `0x${string}`,
-      proof: [
-        '0xaf005b651243ca95ea8580c7fb7129f35d5a81634578789b841658723f061518',
-        '0x96f023dc0bce011d48eb3e262f651e611c1946af7f8bf7362ce6d872a87dfeab',
-        '0x5737b7f9662dd2fed6073d06bdf4f10b47ec5ef196e77f20bc36bc7faae5b07a',
-        '0xeb5f0d5ddd45f007e487b9f2b28bcd111102cacafc942c4965e379583651977e',
-        '0xa1c2f4ae7e0433e044680c45617b32965d96080d22d7ca9e40d8dd6f98aea9c0',
-      ].map((p) => p as `0x${string}`),
-      isLeft: 1n,
-    };
+    // If we don't have valid data, throw an error that will be caught below
+    throw new Error('Invalid or missing proof data from Axiom Keystore');
   } catch (error) {
     console.error('Error getting proof from Axiom:', error);
     throw error;
@@ -370,8 +295,7 @@ export default function KeystoreDemo() {
     }
   };
 
-  // Remove the interval-based refresh effect
-  // Refresh balance every 30 seconds
+  // Fetch balance when the smart account client is set
   useEffect(() => {
     if (smartAccountClient) {
       getBalance();
@@ -547,7 +471,7 @@ export default function KeystoreDemo() {
 
       try {
         // Generate a fixed zero SALT
-        const zeroSalt = '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`;
+        const zeroSalt = zeroHash;
         setSalt(zeroSalt);
 
         // Properly calculate keystoreAddress using the formula:
@@ -644,20 +568,7 @@ export default function KeystoreDemo() {
 
       // Get a proper proof for the counterfactual keystore address
       setTransactionStatus('Getting proof from Axiom Keystore...');
-      const proofData = await getAxiomProof(keystoreAddress, salt);
-
-      // Create the KeyMerkleProofData structure for deployment
-      const keystoreProof = {
-        isExclusion: proofData.isExclusion,
-        exclusionExtraData: proofData.exclusionExtraData,
-        nextDummyByte: proofData.nextDummyByte,
-        nextImtKey: proofData.nextImtKey,
-        vkeyHash: proofData.vkeyHash,
-        keyData: keyData,
-        proof: proofData.proof,
-        isLeft: proofData.isLeft,
-      };
-
+      const keystoreProof = await getAxiomProof(keystoreAddress, salt);
       console.log('Keystore proof:', keystoreProof);
 
       // Encode the final signature by combining the proof and the signature
@@ -749,22 +660,12 @@ export default function KeystoreDemo() {
         throw new Error('Keystore address not set');
       }
 
-      // Get proof data formatted for the KeystoreValidator
-      const proofData = await getAxiomProof(keystoreAddress, salt);
-
-      // Create a proof object as would be used in the validator's signature
-      const keystoreProof: KeystoreProofData = {
-        isExclusion: proofData.isExclusion,
-        exclusionExtraData: proofData.exclusionExtraData,
-        nextDummyByte: proofData.nextDummyByte,
-        nextImtKey: proofData.nextImtKey,
-        vkeyHash: proofData.vkeyHash,
-        keyData: keyData,
-        proof: proofData.proof,
-        isLeft: proofData.isLeft,
-      };
-
+      // Get proof data formatted for the KeystoreValidator - now directly returns KeystoreProofData
+      const keystoreProof = await getAxiomProof(keystoreAddress, salt);
       console.log('Keystore proof:', keystoreProof);
+
+      // Set keyData on the proof to ensure it has the correct value
+      keystoreProof.keyData = keyData;
 
       // Store the proof object directly
       setProof(keystoreProof);

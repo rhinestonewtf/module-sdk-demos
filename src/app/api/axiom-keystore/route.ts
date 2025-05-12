@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createNodeClient, BlockTag, KeystoreAddress, BlockTagOrNumber } from '@axiom-crypto/keystore-sdk';
-import { createPublicClient, http, PublicClient } from 'viem';
+import { createNodeClient, KeystoreAddress } from '@axiom-crypto/keystore-sdk';
+import { createPublicClient, http } from 'viem';
 import { baseSepolia } from 'viem/chains';
 
 // The Axiom Keystore RPC endpoint
@@ -32,67 +32,70 @@ const baseSepoliaClient = createPublicClient({
 });
 
 /**
- * API route handler to proxy requests to Axiom Keystore
- * This avoids CORS issues when calling from the browser
+ * GET handler to fetch proof for a keystore address
+ */
+export async function GET(request: Request) {
+  try {
+    // Get the keystore address from the URL search params
+    const { searchParams } = new URL(request.url);
+    const address = searchParams.get('address');
+
+    if (!address) {
+      return NextResponse.json({ error: 'Missing required parameter: address' }, { status: 400 });
+    }
+
+    try {
+      // Get the latest keystore state root from the cache contract
+      const stateRoot = (await baseSepoliaClient.readContract({
+        address: AXIOM_KEYSTORE_CACHE,
+        abi: CACHE_ABI,
+        functionName: 'latestKeystoreStateRoot',
+      })) as `0x${string}`;
+
+      // Verify that we got a valid state root
+      if (!stateRoot) {
+        throw new Error('Failed to get a valid state root from the cache contract');
+      }
+
+      console.log('Using keystore state root from cache:', stateRoot);
+
+      // Call the SDK to get the block number
+      const blockNumber = await keystoreNodeClient.getBlockNumberByStateRoot({
+        stateRoot: stateRoot,
+      });
+
+      // Call the SDK with the block number
+      const proofResponse = await keystoreNodeClient.getProof({
+        address: address as unknown as KeystoreAddress,
+        block: blockNumber,
+      });
+
+      return NextResponse.json(proofResponse);
+    } catch (sdkError) {
+      console.error('Error fetching proof:', sdkError);
+      return NextResponse.json(
+        { error: `Failed to fetch proof: ${sdkError instanceof Error ? sdkError.message : String(sdkError)}` },
+        { status: 500 }
+      );
+    }
+  } catch (error) {
+    // Handle errors
+    console.error('Error processing request:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to process request' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Fallback POST handler for other requests
  */
 export async function POST(request: Request) {
   try {
-    // Get the request body from the incoming request
+    // For other requests, forward them to the Axiom RPC endpoint
     const body = await request.json();
 
-    // Handle getProof requests using the SDK directly
-    if (body.method === 'axiom_getProof') {
-      try {
-        // Extract the parameters
-        const address = body.params.address as string;
-
-        // Get the latest keystore state root from the cache contract
-        // We don't want to fall back to 'latest' - we must get the state root
-        const result = await baseSepoliaClient.readContract({
-          address: AXIOM_KEYSTORE_CACHE,
-          abi: CACHE_ABI,
-          functionName: 'latestKeystoreStateRoot',
-        });
-
-        // Verify that we got a valid state root
-        if (!result) {
-          throw new Error('Failed to get a valid state root from the cache contract');
-        }
-
-        console.log('Using keystore state root from cache:', result);
-
-        // Convert the result to the appropriate type for the SDK
-        const stateRoot = result as `0x${string}`;
-
-        // Call the SDK to get the block number
-        const blockNumber = await keystoreNodeClient.getBlockNumberByStateRoot({
-          stateRoot: stateRoot,
-        });
-
-        // Call the SDK with the state root
-        const proofResponse = await keystoreNodeClient.getProof({
-          address: address as unknown as KeystoreAddress,
-          block: blockNumber,
-        });
-
-        return NextResponse.json({
-          jsonrpc: '2.0',
-          id: body.id,
-          result: proofResponse,
-        });
-      } catch (sdkError) {
-        console.error('Error:', sdkError);
-        return NextResponse.json({
-          jsonrpc: '2.0',
-          id: body.id,
-          error: {
-            message: `Error: ${sdkError instanceof Error ? sdkError.message : String(sdkError)}`,
-          },
-        });
-      }
-    }
-
-    // For other requests, forward them to the Axiom RPC endpoint as before
     const response = await fetch(AXIOM_KEYSTORE_RPC_URL, {
       method: 'POST',
       headers: {
@@ -111,9 +114,7 @@ export async function POST(request: Request) {
     console.error('Error proxying request to Axiom Keystore:', error);
     return NextResponse.json(
       {
-        error: {
-          message: error instanceof Error ? error.message : 'Failed to proxy request to Axiom Keystore',
-        },
+        error: error instanceof Error ? error.message : 'Failed to proxy request to Axiom Keystore',
       },
       { status: 500 }
     );
