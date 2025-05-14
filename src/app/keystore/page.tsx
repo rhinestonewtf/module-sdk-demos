@@ -569,7 +569,8 @@ export default function KeystoreDemo() {
       // Get a proper proof for the counterfactual keystore address
       setTransactionStatus('Getting proof from Axiom Keystore...');
       const keystoreProof = await getAxiomProof(keystoreAddress, salt);
-      console.log('Keystore proof:', keystoreProof);
+      // Set keyData
+      keystoreProof.keyData = keyData;
 
       // Encode the final signature by combining the proof and the signature
       const combinedSignature = encodeAbiParameters(
