@@ -9,6 +9,7 @@ import {
   isAddress,
   getAddress,
   encodeAbiParameters,
+  encodePacked,
   Hex,
   keccak256,
   concat,
@@ -128,7 +129,15 @@ async function getAxiomProof(keystoreAddress: `0x${string}`, userSalt: `0x${stri
       // )
 
       // Calculate valueHash using abi.encode wrapped in keccak256
-      const valueHash = keccak256(encodeAbiParameters([{ type: 'bytes32' }], [leaf.value]));
+      let valueHash;
+      console.log('Leaf value length:', leaf.value.length);
+      if (leaf.value.length == 66) {
+        // For 32 bytes data, use bytes32 type with packed encoding
+        valueHash = keccak256(encodePacked(['bytes32'], [leaf.value]));
+      } else if (leaf.value.length == 130) {
+        // For 64 bytes data, use bytes type with packed encoding
+        valueHash = keccak256(encodePacked(['bytes'], [leaf.value]));
+      }
 
       // Construct exclusionExtraData
       const exclusionExtraData = concat([leaf.keyPrefix, leaf.key, userSalt, valueHash]) as `0x${string}`;
