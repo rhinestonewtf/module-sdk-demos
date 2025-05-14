@@ -854,7 +854,17 @@ export default function KeystoreDemo() {
       <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
         <div className="flex flex-row items-center align-center">
           <Image className="dark:invert" src="/rhinestone.svg" alt="Rhinestone logo" width={180} height={38} priority />{' '}
-          <span className="text-lg font-bold">x Axiom Keystore</span>
+          <span className="text-lg font-bold">
+            x{' '}
+            <a
+              href="https://keystore-docs.axiom.xyz/introduction"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              Axiom Keystore
+            </a>
+          </span>
         </div>
 
         <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
