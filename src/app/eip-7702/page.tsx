@@ -21,7 +21,7 @@ import {
   Transport,
   zeroAddress,
 } from "viem";
-import { signAuthorization } from 'viem/actions'
+import { signAuthorization } from "viem/actions";
 import { Erc7579Actions } from "permissionless/actions/erc7579";
 import { createSmartAccountClient, SmartAccountClient } from "permissionless";
 import {
@@ -44,7 +44,7 @@ import {
   getPermissionId,
   SMART_SESSIONS_ADDRESS,
 } from "@rhinestone/module-sdk";
-import { odysseyTestnet } from "viem/chains";
+import { sepolia } from "viem/chains";
 import { getAccountNonce } from "permissionless/actions";
 import { erc7579Actions } from "permissionless/actions/erc7579";
 import { Footer } from "@/components/Footer";
@@ -77,14 +77,14 @@ const session: Session = {
       actionPolicies: [getSudoPolicy()],
     },
   ],
-  chainId: BigInt(odysseyTestnet.id),
+  chainId: BigInt(sepolia.id),
   permitERC4337Paymaster: true,
 };
 
 export default function Home() {
   const publicClient = createPublicClient({
-    chain: odysseyTestnet,
-    transport: http("https://odyssey.ithaca.xyz"),
+    chain: sepolia,
+    transport: http(),
   });
 
   const [account, setAccount] = useState<Account>();
@@ -255,7 +255,7 @@ export default function Home() {
     });
 
     const userOpHashToSign = getUserOperationHash({
-      chainId: odysseyTestnet.id,
+      chainId: sepolia.id,
       entryPointAddress: entryPoint07Address,
       entryPointVersion: "0.7",
       userOperation,
@@ -328,10 +328,10 @@ export default function Home() {
       erc7579LaunchpadAddress: "0x7579011aB74c46090561ea277Ba79D510c6C00ff",
     });
 
-    const pimlicoOdysseyUrl = `https://api.pimlico.io/v2/${odysseyTestnet.id}/rpc?apikey=${process.env.NEXT_PUBLIC_PIMLICO_API_KEY}`;
+    const pimlicoSepoliaUrl = `https://api.pimlico.io/v2/${sepolia.id}/rpc?apikey=${process.env.NEXT_PUBLIC_PIMLICO_API_KEY}`;
 
     const pimlicoClient = createPimlicoClient({
-      transport: http(pimlicoOdysseyUrl),
+      transport: http(pimlicoSepoliaUrl),
       entryPoint: {
         address: entryPoint07Address,
         version: "0.7",
@@ -341,12 +341,12 @@ export default function Home() {
     const _smartAccountClient = createSmartAccountClient({
       account: safeAccount,
       paymaster: pimlicoClient,
-      chain: odysseyTestnet,
+      chain: sepolia,
       userOperation: {
         estimateFeesPerGas: async () =>
           (await pimlicoClient.getUserOperationGasPrice()).fast,
       },
-      bundlerTransport: http(pimlicoOdysseyUrl),
+      bundlerTransport: http(pimlicoSepoliaUrl),
     }).extend(erc7579Actions());
 
     setSmartAccountClient(_smartAccountClient as any); // eslint-disable-line
